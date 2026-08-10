@@ -18,9 +18,9 @@
     "android": {
       "package": "com.aparaitech.interview",
       "permissions": [
-        "CAMERA",
-        "RECORD_AUDIO",
-        "INTERNET"
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.INTERNET"
       ]
     },
     "plugins": [
@@ -54,7 +54,11 @@
       "typedRoutes": false
     },
     "extra": {
-      "apiBaseUrl": "${EXPO_PUBLIC_API_BASE_URL}"
+      "apiBaseUrl": "${EXPO_PUBLIC_API_BASE_URL}",
+      "router": {},
+      "eas": {
+        "projectId": "5b852f04-53c4-4916-92b6-1b13805516b7"
+      }
     }
   }
 }

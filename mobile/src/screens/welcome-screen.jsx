@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
+import { api } from "../api/client";
 
 const heroImage = require("../../assets/images/interview-hero-v2.png");
 
@@ -50,6 +51,9 @@ export default function WelcomeScreen() {
   const { width } = useWindowDimensions();
   const heroWidth = Math.min(340, Math.max(270, width * 0.55));
   const continueToCandidate = () => router.push({ pathname: "/candidate-access", params: code.trim() ? { code: code.trim().toUpperCase() } : {} });
+
+  // Wake a sleeping Render instance while the candidate reads the welcome page.
+  useEffect(() => { api.health().catch(() => {}); }, []);
 
   return <View style={styles.root}>
     <StatusBar style="light" />

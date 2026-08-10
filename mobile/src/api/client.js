@@ -3,6 +3,7 @@ import { secureStorage } from "../services/secure-storage";
 
 const INTERVIEW_TOKEN = "aparaitech.interview-token";
 const STATUS_TOKEN = "aparaitech.status-token";
+const REQUEST_TIMEOUT_MS = 75_000;
 
 export class ApiError extends Error {
   constructor(message, status = 0, code = "NETWORK_ERROR", details) { super(message); this.status = status; this.code = code; this.details = details; }
@@ -18,7 +19,9 @@ export const getInterviewToken = () => secureStorage.get(INTERVIEW_TOKEN);
 export const getStatusToken = () => secureStorage.get(STATUS_TOKEN);
 
 async function request(path, { method = "GET", body, token = null, headers = {}, signal } = {}) {
-  const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 25000);
+  // Render's free tier can take more than 50 seconds to wake after inactivity.
+  // Keep the request alive long enough for the first API call from a device.
+  const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   const combinedSignal = signal || controller.signal;
   try {
     const response = await fetch(`${apiBaseUrl()}${path}`, { method, headers: { Accept: "application/json", ...(body instanceof FormData ? {} : body ? { "Content-Type": "application/json" } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...headers }, body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined, signal: combinedSignal });
@@ -36,6 +39,7 @@ const interviewRequest = async (path, options = {}) => request(path, { ...option
 const statusRequest = async (path, options = {}) => request(path, { ...options, token: await getStatusToken() });
 
 export const api = {
+  health: () => request("/health"),
   verifyInvitation: async (code) => { const result = await request("/api/invitations/verify", { method: "POST", body: { code } }); await setTokens(result.tokens); return result; },
   candidateStatus: () => statusRequest("/api/candidates/status"),
   uploadResume: (candidateId, asset) => { const data = new FormData(); if (asset.file) data.append("resume", asset.file, asset.name || asset.file.name); else data.append("resume", { uri: asset.uri, name: asset.name || "resume.pdf", type: asset.mimeType || "application/pdf" }); return interviewRequest(`/api/candidates/${candidateId}/resume`, { method: "POST", body: data }); },
