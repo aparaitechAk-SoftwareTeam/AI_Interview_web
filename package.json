@@ -26,5 +26,5 @@
     "lint": "npm run lint --workspaces --if-present",
     "seed": "npm run seed --workspace @aparaitech/backend"
   },
-  "engines": { "node": ">=22.0.0 <25.0.0", "npm": ">=10.0.0 <11.0.0" }
+  "engines": { "node": ">=22.0.0 <25.0.0", "npm": ">=10.0.0" }
 }
