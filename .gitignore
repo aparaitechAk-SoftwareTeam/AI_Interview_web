@@ -1,0 +1,14 @@
+node_modules/
+.expo/
+dist/
+coverage/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+backend/uploads/
+uploads/.ocr-cache/
+backend/.data/
+mobile/android/
+mobile/ios/

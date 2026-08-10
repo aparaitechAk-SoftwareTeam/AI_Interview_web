@@ -1,0 +1,41 @@
+import "dotenv/config";
+import path from "node:path";
+import { z } from "zod";
+
+const schema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  PORT: z.coerce.number().int().min(1).max(65535).default(4000),
+  MONGODB_URI: z.string().min(1).optional(),
+  MONGODB_DB: z.string().trim().min(1).max(64).default("ai_mock_interviews"),
+  JWT_SECRET: z.string().min(32).optional(),
+  AUTH_SECRET: z.string().min(32).optional(),
+  JWT_ISSUER: z.string().default("aparaitech-interview-api"),
+  JWT_AUDIENCE: z.string().default("aparaitech-mobile"),
+  GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1).optional(),
+  AI_PROVIDER: z.enum(["gemini", "disabled"]).default("gemini"),
+  AI_MODEL: z.string().default("gemini-3.5-flash-lite"),
+  AI_FALLBACK_MODELS: z.string().default("gemini-3.1-flash-lite,gemini-flash-lite-latest"),
+  AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(20000),
+  AI_MAX_RETRIES: z.coerce.number().int().min(0).max(3).default(2),
+  STORAGE_PROVIDER: z.enum(["local"]).default("local"),
+  UPLOAD_DIR: z.string().default("./uploads"),
+  MAX_UPLOAD_MB: z.coerce.number().int().min(1).max(100).default(10),
+  CORS_ORIGINS: z.string().default("http://localhost:8081,exp://127.0.0.1:8081"),
+  ADMIN_USERNAME: z.string().trim().min(3).max(80).regex(/^[a-zA-Z0-9._-]+$/).optional(),
+  ADMIN_EMAIL: z.string().email().optional(),
+  ADMIN_PASSWORD: z.string().min(12).optional(),
+  SEED_DEMO: z.enum(["true", "false"]).default("false")
+});
+
+const result = schema.safeParse(process.env);
+if (!result.success) throw new Error(`Invalid environment: ${result.error.issues.map((x) => x.message).join(", ")}`);
+const values = result.data;
+if (values.NODE_ENV === "production" && !values.JWT_SECRET && !values.AUTH_SECRET) throw new Error("JWT_SECRET or AUTH_SECRET is required in production.");
+
+export const env = Object.freeze({
+  ...values,
+  JWT_SECRET: values.JWT_SECRET || values.AUTH_SECRET || "development-only-secret-change-before-production-000000",
+  UPLOAD_DIR: path.resolve(process.cwd(), values.UPLOAD_DIR),
+  CORS_ORIGINS: values.CORS_ORIGINS.split(",").map((origin) => origin.trim()).filter(Boolean),
+  AI_FALLBACK_MODELS: values.AI_FALLBACK_MODELS.split(",").map((model) => model.trim()).filter(Boolean)
+});

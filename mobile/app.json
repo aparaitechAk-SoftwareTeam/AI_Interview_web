@@ -1,0 +1,60 @@
+{
+  "expo": {
+    "name": "Aparaitech Interview Software",
+    "slug": "aparaitech-interview-software",
+    "scheme": "aparaitech-interview",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "com.aparaitech.interview",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Aparaitech uses your camera during an authorized interview after you consent.",
+        "NSMicrophoneUsageDescription": "Aparaitech uses your microphone to capture your interview response after you consent.",
+        "NSSpeechRecognitionUsageDescription": "Speech recognition converts your interview response into a transcript for review."
+      }
+    },
+    "android": {
+      "package": "com.aparaitech.interview",
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "INTERNET"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Aparaitech to use your camera for this interview.",
+          "microphonePermission": "Allow Aparaitech to use your microphone for this interview.",
+          "recordAudioAndroid": true
+        }
+      ],
+      [
+        "expo-document-picker",
+        {
+          "iCloudContainerEnvironment": "Production"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Aparaitech to select a photo of your resume for secure AI extraction.",
+          "cameraPermission": "Allow Aparaitech to photograph your resume for secure AI extraction."
+        }
+      ],
+      "expo-secure-store",
+      "expo-speech-recognition",
+      "expo-image"
+    ],
+    "experiments": {
+      "typedRoutes": false
+    },
+    "extra": {
+      "apiBaseUrl": "${EXPO_PUBLIC_API_BASE_URL}"
+    }
+  }
+}

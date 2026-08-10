@@ -1,0 +1,28 @@
+{
+  "name": "aparaitech-interview-software",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": ["backend", "mobile", "shared"],
+  "overrides": {
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native-screens": "4.26.2",
+    "mongoose": {
+      "mongodb": {
+        "gcp-metadata": "7.0.1"
+      }
+    }
+  },
+  "devDependencies": {
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "scripts": {
+    "dev:backend": "npm run dev --workspace @aparaitech/backend",
+    "dev:mobile": "npm run start --workspace @aparaitech/mobile",
+    "test": "npm run test --workspace @aparaitech/backend",
+    "lint": "npm run lint --workspaces --if-present",
+    "seed": "npm run seed --workspace @aparaitech/backend"
+  },
+  "engines": { "node": ">=22.0.0", "npm": ">=10.0.0" }
+}

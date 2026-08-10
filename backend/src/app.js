@@ -1,0 +1,24 @@
+import express from "express";
+import helmet from "helmet";
+import cors from "cors";
+import { env } from "./config/env.js";
+import { adminRoutes } from "./routes/admin-routes.js";
+import { authRoutes } from "./routes/auth-routes.js";
+import { candidateRoutes } from "./routes/candidate-routes.js";
+import { interviewRoutes } from "./routes/interview-routes.js";
+import { invitationRoutes } from "./routes/invitation-routes.js";
+import { errorHandler, notFoundHandler } from "./middleware/error-handler.js";
+
+export const app = express();
+app.set("trust proxy", 1);
+app.use(helmet({ crossOriginResourcePolicy: false }));
+app.use(cors({ origin(origin, callback) { if (!origin || env.CORS_ORIGINS.includes(origin) || env.NODE_ENV === "development") return callback(null, true); return callback(new Error("Origin is not allowed by CORS")); }, credentials: false }));
+app.use(express.json({ limit: "1mb" }));
+app.get("/health", (_req, res) => res.json({ status: "ok", timestamp: new Date().toISOString(), aiConfigured: Boolean(env.GOOGLE_GENERATIVE_AI_API_KEY && env.AI_PROVIDER === "gemini") }));
+app.use("/api/admin", authRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/invitations", invitationRoutes);
+app.use("/api/candidates", candidateRoutes);
+app.use("/api/interviews", interviewRoutes);
+app.use(notFoundHandler);
+app.use(errorHandler);

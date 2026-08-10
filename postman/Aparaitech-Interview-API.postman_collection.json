@@ -1,0 +1,80 @@
+{
+  "info": {
+    "_postman_id": "62bc2d6a-2bd7-4dc7-a13a-9b91b2a47122",
+    "name": "Aparaitech Interview API",
+    "description": "Development collection. Set variables after login/invitation verification. Never commit real secrets into the collection.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://192.168.1.50:4000" },
+    { "key": "adminToken", "value": "" },
+    { "key": "interviewToken", "value": "" },
+    { "key": "statusToken", "value": "" },
+    { "key": "candidateId", "value": "" },
+    { "key": "interviewId", "value": "" },
+    { "key": "questionId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/health" }
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Login",
+          "event": [{ "listen": "test", "script": { "exec": ["const body = pm.response.json();", "pm.collectionVariables.set('adminToken', body.token);"] } }],
+          "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"username\": \"administrator\",\n  \"password\": \"local-development-password\"\n}" }, "url": "{{baseUrl}}/api/admin/login" }
+        },
+        {
+          "name": "Dashboard",
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/dashboard" }
+        },
+        {
+          "name": "Create candidate",
+          "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"fullName\": \"Rahul Patil\",\n  \"email\": \"rahul@example.test\",\n  \"phone\": \"+91 90000 00000\",\n  \"position\": \"React Native Intern\",\n  \"validityHours\": 168,\n  \"singleUse\": false\n}" }, "url": "{{baseUrl}}/api/admin/candidates" }
+        },
+        {
+          "name": "Interview settings",
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/settings" }
+        },
+        {
+          "name": "Final decision",
+          "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"decision\": \"ACCEPT\", \"comment\": \"Strong evidence in Q&A\" }" }, "url": "{{baseUrl}}/api/admin/interviews/{{interviewId}}/decision" }
+        }
+      ]
+    },
+    {
+      "name": "Candidate interview",
+      "item": [
+        {
+          "name": "Verify invitation",
+          "event": [{ "listen": "test", "script": { "exec": ["const body = pm.response.json();", "pm.collectionVariables.set('interviewToken', body.tokens.interviewToken);", "pm.collectionVariables.set('statusToken', body.tokens.statusToken);", "pm.collectionVariables.set('candidateId', body.candidate.id);"] } }],
+          "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"code\": \"APAI-REPLACE-ME\" }" }, "url": "{{baseUrl}}/api/invitations/verify" }
+        },
+        {
+          "name": "Candidate status",
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{statusToken}}" }], "url": "{{baseUrl}}/api/candidates/status" }
+        },
+        {
+          "name": "Upload resume",
+          "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{interviewToken}}" }], "body": { "mode": "formdata", "formdata": [{ "key": "resume", "type": "file", "src": "" }] }, "url": "{{baseUrl}}/api/candidates/{{candidateId}}/resume" }
+        },
+        {
+          "name": "Start/recover interview",
+          "event": [{ "listen": "test", "script": { "exec": ["const body = pm.response.json();", "pm.collectionVariables.set('interviewId', body.interview.id);", "pm.collectionVariables.set('questionId', body.currentQuestion.id);"] } }],
+          "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{interviewToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"consent\": {\n    \"version\": \"2026-08\",\n    \"recording\": true,\n    \"camera\": true,\n    \"microphone\": true,\n    \"monitoring\": true\n  }\n}" }, "url": "{{baseUrl}}/api/interviews/start" }
+        },
+        {
+          "name": "Submit answer (idempotent)",
+          "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{interviewToken}}" }, { "key": "Content-Type", "value": "application/json" }, { "key": "Idempotency-Key", "value": "{{interviewId}}:{{questionId}}" }], "body": { "mode": "raw", "raw": "{\n  \"questionId\": \"{{questionId}}\",\n  \"transcript\": \"I would explain my answer with evidence from my project.\",\n  \"transcriptConfidence\": 0.9,\n  \"source\": \"MANUAL\"\n}" }, "url": "{{baseUrl}}/api/interviews/{{interviewId}}/answers" }
+        },
+        {
+          "name": "Log background event",
+          "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{interviewToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"type\": \"APP_BACKGROUND\", \"durationMs\": 12000 }" }, "url": "{{baseUrl}}/api/interviews/{{interviewId}}/events" }
+        }
+      ]
+    }
+  ]
+}

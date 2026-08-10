@@ -1,0 +1,16 @@
+import { useState } from "react";
+import { Switch, Text, View } from "react-native";
+import { router, useLocalSearchParams } from "expo-router";
+import { api } from "../api/client";
+import { Screen } from "../components/screen";
+import { Card } from "../components/card";
+import { Button } from "../components/button";
+import { ErrorBanner } from "../components/error-banner";
+import { colors } from "../theme/colors";
+
+function ConsentRow({ label, value, onChange, detail }) { return <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}><Switch value={value} onValueChange={onChange} /><View style={{ flex: 1 }}><Text selectable style={{ color: colors.text, fontWeight: "800" }}>{label}</Text><Text selectable style={{ color: colors.muted, fontSize: 13, lineHeight: 18 }}>{detail}</Text></View></View>; }
+export default function InterviewConsentScreen() {
+  const { candidateName } = useLocalSearchParams(); const [consent, setConsent] = useState({ recording: false, camera: false, microphone: false, monitoring: false }); const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const all = Object.values(consent).every(Boolean);
+  const start = async () => { setLoading(true); setError(""); try { const data = await api.startInterview({ version: "2026-08", ...consent }); router.replace({ pathname: "/interview/[id]", params: { id: data.interview.id, candidateName: candidateName || "Candidate", startedAt: data.interview.startedAt, durationMinutes: data.interview.durationMinutes, firstQuestion: JSON.stringify(data.currentQuestion) } }); } catch (reason) { setError(reason.message); } finally { setLoading(false); } };
+  return <Screen><View style={{ gap: 4 }}><Text selectable style={{ color: colors.text, fontSize: 24, fontWeight: "900" }}>Informed consent</Text><Text selectable style={{ color: colors.muted, lineHeight: 21 }}>Please read these controls carefully. Continuing starts the authorized interview session.</Text></View><Card><ConsentRow label="Camera" value={consent.camera} onChange={(value) => setConsent({ ...consent, camera: value })} detail="Your camera preview and interview video can be recorded during the session." /><ConsentRow label="Microphone and speech" value={consent.microphone} onChange={(value) => setConsent({ ...consent, microphone: value })} detail="Spoken responses are transcribed. You can use manual text if recognition fails." /><ConsentRow label="Interview recording" value={consent.recording} onChange={(value) => setConsent({ ...consent, recording: value })} detail="Camera video and audio are uploaded in protected chunks for authorized recruiter review." /><ConsentRow label="Interview integrity signals" value={consent.monitoring} onChange={(value) => setConsent({ ...consent, monitoring: value })} detail="App interruptions are evidence for review, never an automatic rejection decision." /></Card><ErrorBanner message={error} /><Button title="Start secure interview" loading={loading} disabled={!all} onPress={start} /><Text selectable style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>This build does not claim background screen capture or biometric identity detection. Those require a separately integrated native capability and explicit platform consent.</Text></Screen>;
+}
