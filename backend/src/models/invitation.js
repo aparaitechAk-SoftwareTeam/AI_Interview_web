@@ -13,7 +13,14 @@ const invitationSchema = new mongoose.Schema({
   usedAt: Date,
   revokedAt: Date,
   reattemptCount: { type: Number, default: 0 },
-  lastVerifiedAt: Date
+  lastVerifiedAt: Date,
+  emailDelivery: {
+    status: { type: String, enum: ["PENDING", "SENT", "FAILED", "NOT_CONFIGURED"], default: "PENDING" },
+    lastAttemptAt: Date,
+    sentAt: Date,
+    messageId: { type: String, maxlength: 300 },
+    error: { type: String, maxlength: 300 }
+  }
 }, { timestamps: true, versionKey: false });
 
 export const Invitation = mongoose.model("Invitation", invitationSchema);

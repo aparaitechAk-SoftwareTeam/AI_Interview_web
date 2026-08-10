@@ -74,6 +74,7 @@ export const api = {
   adminSettings: (token) => request("/api/admin/settings", { token }),
   updateSettings: (token, payload) => request("/api/admin/settings", { method: "PUT", body: payload, token }),
   adminCandidates: (token, query = "") => request(`/api/admin/candidates${query ? `?${query}` : ""}`, { token }),
+  adminCandidateRegistry: (token, query = "") => request(`/api/admin/candidates/registry${query ? `?${query}` : ""}`, { token }),
   adminCandidate: (token, id) => request(`/api/admin/candidates/${id}`, { token }),
   createCandidate: (token, payload) => request("/api/admin/candidates", { method: "POST", body: payload, token }),
   decide: (token, interviewId, payload) => request(`/api/admin/interviews/${interviewId}/decision`, { method: "POST", body: payload, token }),

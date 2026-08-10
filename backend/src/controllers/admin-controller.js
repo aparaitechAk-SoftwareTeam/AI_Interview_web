@@ -8,6 +8,7 @@ import { createInvitationCode } from "../utils/crypto.js";
 import { writeAudit } from "../utils/audit.js";
 import { calculateIntegrity } from "../utils/integrity.js";
 import { storage } from "../services/storage/local-storage.js";
+import { invitationEmail } from "../services/notifications/invitation-email.js";
 import { createCandidate, decision, resetInvitation, terminate } from "../validators/request.js";
 
 async function newInvitation(candidateId, adminId, validityHours, singleUse = false) {
@@ -31,14 +32,27 @@ export const candidateView = (candidate) => ({
   createdAt: candidate.createdAt,
   updatedAt: candidate.updatedAt
 });
+const invitationView = (invitation) => invitation && ({
+  id: String(invitation.id || invitation._id),
+  code: invitation.code,
+  active: invitation.active,
+  expiresAt: invitation.expiresAt,
+  emailDelivery: { status: invitation.emailDelivery?.status || "PENDING", sentAt: invitation.emailDelivery?.sentAt || null, lastAttemptAt: invitation.emailDelivery?.lastAttemptAt || null }
+});
+async function deliverInvitation(candidate, invitation) {
+  invitation.emailDelivery = await invitationEmail.send({ candidate, invitation });
+  await invitation.save();
+  return invitationView(invitation);
+}
 
 export const create = asyncHandler(async (req, res) => {
   const payload = createCandidate.parse(req.body);
   const candidate = await Candidate.create({ ...payload, status: CandidateStatus.INVITED });
   const invitation = await newInvitation(candidate._id, req.auth.sub, payload.validityHours, payload.singleUse);
   candidate.invitationId = invitation._id; await candidate.save();
-  await writeAudit({ adminId: req.auth.sub, action: "CANDIDATE_CREATED", resourceType: "Candidate", resourceId: candidate.id, metadata: { invitationId: invitation.id }, ip: req.ip });
-  res.status(201).json({ candidate: candidateView(candidate), invitation: { id: invitation.id, code: invitation.code, expiresAt: invitation.expiresAt, active: invitation.active } });
+  const deliveredInvitation = await deliverInvitation(candidate, invitation);
+  await writeAudit({ adminId: req.auth.sub, action: "CANDIDATE_CREATED", resourceType: "Candidate", resourceId: candidate.id, metadata: { invitationId: invitation.id, emailDelivery: deliveredInvitation.emailDelivery.status }, ip: req.ip });
+  res.status(201).json({ candidate: candidateView(candidate), invitation: deliveredInvitation });
 });
 
 export const list = asyncHandler(async (req, res) => {
@@ -48,9 +62,21 @@ export const list = asyncHandler(async (req, res) => {
   if (position) filter.position = position;
   if (q) { const safe = String(q).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); filter.$or = ["fullName", "email", "phone"].map((field) => ({ [field]: new RegExp(safe, "i") })); }
   const skip = (Math.max(1, Number(page)) - 1) * Math.min(100, Number(limit));
-  const [candidates, total] = await Promise.all([Candidate.find(filter).sort({ createdAt: -1 }).skip(skip).limit(Math.min(100, Number(limit))).populate("invitationId", "code expiresAt active").populate("currentInterviewId", "scores aiRecommendation").lean(), Candidate.countDocuments(filter)]);
+  const [candidates, total] = await Promise.all([Candidate.find(filter).sort({ createdAt: -1 }).skip(skip).limit(Math.min(100, Number(limit))).populate("invitationId", "code expiresAt active emailDelivery").populate("currentInterviewId", "scores aiRecommendation").lean(), Candidate.countDocuments(filter)]);
   const filtered = candidates.filter((candidate) => (!aiRecommendation || candidate.currentInterviewId?.aiRecommendation === aiRecommendation) && (!requestedDecision || candidate.status === ({ ACCEPT: "SELECTED", REJECT: "REJECTED", HOLD: "HOLD", REINTERVIEW: "REINTERVIEW_REQUIRED" }[requestedDecision])));
-  res.json({ candidates: filtered.map((candidate) => ({ ...candidateView(candidate), invitation: candidate.invitationId ? { code: candidate.invitationId.code, expiresAt: candidate.invitationId.expiresAt, active: candidate.invitationId.active } : null, aiScore: candidate.currentInterviewId?.scores?.overallScore, aiRecommendation: candidate.currentInterviewId?.aiRecommendation })), total, page: Number(page) });
+  res.json({ candidates: filtered.map((candidate) => ({ ...candidateView(candidate), invitation: invitationView(candidate.invitationId), aiScore: candidate.currentInterviewId?.scores?.overallScore, aiRecommendation: candidate.currentInterviewId?.aiRecommendation })), total, page: Number(page) });
+});
+
+export const registry = asyncHandler(async (req, res) => {
+  const { q = "", status } = req.query; const filter = {};
+  if (status) filter.status = status;
+  if (q) { const safe = String(q).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); filter.$or = ["fullName", "email", "phone", "position"].map((field) => ({ [field]: new RegExp(safe, "i") })); }
+  const [candidates, grouped] = await Promise.all([
+    Candidate.find(filter).sort({ createdAt: -1 }).limit(500).populate("invitationId", "code expiresAt active emailDelivery").populate("currentInterviewId", "scores aiRecommendation").lean(),
+    Candidate.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }])
+  ]);
+  const pipeline = Object.fromEntries(grouped.map((entry) => [entry._id, entry.count]));
+  res.json({ generatedAt: new Date().toISOString(), total: candidates.length, pipeline, candidates: candidates.map((candidate) => ({ ...candidateView(candidate), invitation: invitationView(candidate.invitationId), aiScore: candidate.currentInterviewId?.scores?.overallScore, aiRecommendation: candidate.currentInterviewId?.aiRecommendation })) });
 });
 
 export const dashboard = asyncHandler(async (_req, res) => {
@@ -120,7 +146,7 @@ export const detail = asyncHandler(async (req, res) => {
   const [questions, answers, events, recording, adminDecision] = interview ? await Promise.all([InterviewQuestion.find({ interviewId: interview._id }).sort({ sequence: 1 }).lean(), InterviewAnswer.find({ interviewId: interview._id }).lean(), InterviewEvent.find({ interviewId: interview._id }).sort({ timestamp: 1 }).lean(), InterviewRecording.findOne({ interviewId: interview._id }).lean(), AdminDecision.findOne({ interviewId: interview._id }).populate("adminId", "fullName email").lean()]) : [[], [], [], null, null];
   const answerByQuestion = new Map(answers.map((item) => [String(item.questionId), item]));
   await writeAudit({ adminId: req.auth.sub, action: "CANDIDATE_VIEWED", resourceType: "Candidate", resourceId: candidate.id, ip: req.ip });
-  res.json({ candidate: candidateView(candidate), invitation: candidate.invitationId, resume: candidate.resumeId, interview: interview ? { ...interview.toObject(), integrity: calculateIntegrity(events) } : null, questionAnswers: questions.map((question) => ({ question, answer: answerByQuestion.get(String(question._id)) || null })), events, recording: recording ? { status: recording.status, durationSeconds: recording.durationSeconds, fileSize: recording.fileSize, chunkCount: recording.chunks?.length || 0, retentionUntil: recording.retentionUntil, updatedAt: recording.updatedAt } : null, adminDecision });
+  res.json({ candidate: candidateView(candidate), invitation: invitationView(candidate.invitationId), resume: candidate.resumeId, interview: interview ? { ...interview.toObject(), integrity: calculateIntegrity(events) } : null, questionAnswers: questions.map((question) => ({ question, answer: answerByQuestion.get(String(question._id)) || null })), events, recording: recording ? { status: recording.status, durationSeconds: recording.durationSeconds, fileSize: recording.fileSize, chunkCount: recording.chunks?.length || 0, retentionUntil: recording.retentionUntil, updatedAt: recording.updatedAt } : null, adminDecision });
 });
 
 export const reset = asyncHandler(async (req, res) => {
@@ -130,8 +156,9 @@ export const reset = asyncHandler(async (req, res) => {
   if (candidate.invitationId) { candidate.invitationId.active = false; candidate.invitationId.revokedAt = new Date(); await candidate.invitationId.save(); }
   const invitation = await newInvitation(candidate._id, req.auth.sub, validityHours);
   candidate.invitationId = invitation._id; candidate.sessionVersion += 1; candidate.status = candidate.resumeId ? CandidateStatus.READY_FOR_INTERVIEW : CandidateStatus.RESUME_PENDING; candidate.currentInterviewId = undefined; await candidate.save();
-  await writeAudit({ adminId: req.auth.sub, action: "INVITATION_RESET", resourceType: "Candidate", resourceId: candidate.id, metadata: { invitationId: invitation.id }, ip: req.ip });
-  res.json({ invitation: { code: invitation.code, expiresAt: invitation.expiresAt }, candidate: candidateView(candidate) });
+  const deliveredInvitation = await deliverInvitation(candidate, invitation);
+  await writeAudit({ adminId: req.auth.sub, action: "INVITATION_RESET", resourceType: "Candidate", resourceId: candidate.id, metadata: { invitationId: invitation.id, emailDelivery: deliveredInvitation.emailDelivery.status }, ip: req.ip });
+  res.json({ invitation: deliveredInvitation, candidate: candidateView(candidate) });
 });
 
 export const terminateInterview = asyncHandler(async (req, res) => {

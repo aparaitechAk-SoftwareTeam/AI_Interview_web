@@ -52,6 +52,25 @@ ADMIN_PASSWORD=a-local-development-password-of-at-least-12-characters
 SEED_DEMO=true
 ```
 
+## Automatic candidate invitation email
+
+When an administrator creates or resets a candidate invitation, the backend sends a professional invitation email containing the private code, expiry time, preparation guidance, consent warnings, and terms. Add the following SMTP values to `backend/.env` for local development and to the Render Environment page for production:
+
+```dotenv
+SMTP_ENABLED=true
+SMTP_HOST=smtp.your-provider.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=notifications@your-domain.com
+SMTP_PASSWORD=your-provider-app-password
+MAIL_FROM=Aparaitech Recruitment <notifications@your-domain.com>
+MAIL_REPLY_TO=hr@your-domain.com
+CANDIDATE_PORTAL_URL=https://your-candidate-portal.example.com
+SUPPORT_EMAIL=hr@your-domain.com
+```
+
+Use an SMTP app password, not an everyday mailbox password. A failed delivery does not create a duplicate candidate: the invitation remains valid and the separate **Candidate Registry** page shows `SENT`, `FAILED`, or `NOT CONFIGURED` for every invitation.
+
 Set the physical-device reachable backend address in `mobile/.env`—use your computer's LAN IP, not `localhost`.
 
 ```dotenv

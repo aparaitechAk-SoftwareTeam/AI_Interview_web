@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { create, dashboard, decide, deleteRecording, detail, list, reset, streamRecording, terminateInterview } from "../controllers/admin-controller.js";
+import { create, dashboard, decide, deleteRecording, detail, list, registry, reset, streamRecording, terminateInterview } from "../controllers/admin-controller.js";
 import { requireAdmin } from "../middleware/auth.js";
 import { getSettings, updateSettings } from "../controllers/settings-controller.js";
 
@@ -10,6 +10,7 @@ adminRoutes.get("/settings", getSettings);
 adminRoutes.put("/settings", updateSettings);
 adminRoutes.post("/candidates", create);
 adminRoutes.get("/candidates", list);
+adminRoutes.get("/candidates/registry", registry);
 adminRoutes.get("/candidates/:candidateId", detail);
 adminRoutes.post("/candidates/:candidateId/invitation/reset", reset);
 adminRoutes.post("/interviews/:interviewId/terminate", terminateInterview);

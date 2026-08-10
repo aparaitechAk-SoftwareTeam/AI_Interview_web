@@ -24,6 +24,16 @@ const schema = z.object({
   ADMIN_USERNAME: z.string().trim().min(3).max(80).regex(/^[a-zA-Z0-9._-]+$/).optional(),
   ADMIN_EMAIL: z.string().email().optional(),
   ADMIN_PASSWORD: z.string().min(12).optional(),
+  SMTP_ENABLED: z.enum(["true", "false"]).default("false"),
+  SMTP_HOST: z.string().trim().min(1).max(255).optional(),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
+  SMTP_SECURE: z.enum(["true", "false"]).default("false"),
+  SMTP_USER: z.string().trim().min(1).max(255).optional(),
+  SMTP_PASSWORD: z.string().min(1).max(500).optional(),
+  MAIL_FROM: z.string().trim().min(3).max(320).optional(),
+  MAIL_REPLY_TO: z.string().email().optional(),
+  CANDIDATE_PORTAL_URL: z.string().url().optional(),
+  SUPPORT_EMAIL: z.string().email().optional(),
   SEED_DEMO: z.enum(["true", "false"]).default("false")
 });
 
@@ -31,11 +41,14 @@ const result = schema.safeParse(process.env);
 if (!result.success) throw new Error(`Invalid environment: ${result.error.issues.map((x) => x.message).join(", ")}`);
 const values = result.data;
 if (values.NODE_ENV === "production" && !values.JWT_SECRET && !values.AUTH_SECRET) throw new Error("JWT_SECRET or AUTH_SECRET is required in production.");
+if (values.SMTP_ENABLED === "true" && (!values.SMTP_HOST || !values.SMTP_USER || !values.SMTP_PASSWORD || !values.MAIL_FROM)) throw new Error("SMTP_HOST, SMTP_USER, SMTP_PASSWORD, and MAIL_FROM are required when SMTP_ENABLED=true.");
 
 export const env = Object.freeze({
   ...values,
   JWT_SECRET: values.JWT_SECRET || values.AUTH_SECRET || "development-only-secret-change-before-production-000000",
   UPLOAD_DIR: path.resolve(process.cwd(), values.UPLOAD_DIR),
   CORS_ORIGINS: values.CORS_ORIGINS.split(",").map((origin) => origin.trim()).filter(Boolean),
-  AI_FALLBACK_MODELS: values.AI_FALLBACK_MODELS.split(",").map((model) => model.trim()).filter(Boolean)
+  AI_FALLBACK_MODELS: values.AI_FALLBACK_MODELS.split(",").map((model) => model.trim()).filter(Boolean),
+  SMTP_ENABLED: values.SMTP_ENABLED === "true",
+  SMTP_SECURE: values.SMTP_SECURE === "true"
 });

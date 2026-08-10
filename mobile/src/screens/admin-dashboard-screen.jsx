@@ -162,6 +162,8 @@ export default function AdminDashboardScreen() {
           <NavAction icon="⚙" label="Settings" onPress={() => router.push("/admin-settings")} />
         </View>
 
+        <Pressable accessibilityRole="button" accessibilityLabel="Open candidate registry and PDF export" onPress={() => router.push("/admin-candidate-registry")} style={({ pressed }) => ({ borderRadius: 17, borderWidth: 1, borderColor: "rgba(127, 165, 255, 0.38)", backgroundColor: "rgba(31, 62, 140, 0.42)", paddingHorizontal: 15, paddingVertical: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between", opacity: pressed ? 0.78 : 1 })}><View><Text selectable style={{ color: "#EAF1FF", fontWeight: "900", fontSize: 15 }}>Candidate Registry</Text><Text selectable style={{ color: "#AFC3E8", fontSize: 12, marginTop: 3 }}>Hierarchy table, email delivery state and PDF export</Text></View><Text style={{ color: "#9FC3FF", fontSize: 20 }}>›</Text></Pressable>
+
         <PortalError message={error} />
 
         <View style={styles.sectionHeader}><View><Text selectable style={styles.sectionTitle}>Recruitment snapshot</Text><Text selectable style={styles.sectionSubtitle}>Live candidate status across your pipeline</Text></View><Text selectable style={styles.updatedText}>{data?.generatedAt ? `Updated ${new Date(data.generatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Loading…"}</Text></View>
