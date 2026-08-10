@@ -86,6 +86,20 @@ npm run dev:mobile
 
 The API health check is `GET http://YOUR_LAN_IP:4000/health`.
 
+## Deploy the API on Render
+
+This repository is an npm workspace: the API depends on the local `shared/` workspace. On Render, deploy from the **repository root** (leave **Root Directory** empty). Do not set it to `backend`, because that excludes `shared/` and can result in missing-package errors.
+
+The included [`render.yaml`](render.yaml) uses these commands:
+
+```bash
+Build Command: npm run render-build
+Start Command: npm start
+Health Check Path: /health
+```
+
+Create a Render Blueprint from the repository, or set the same values in an existing Web Service's Settings. In Render's Environment page set `MONGODB_URI`, `GOOGLE_GENERATIVE_AI_API_KEY`, `CORS_ORIGINS`, `ADMIN_USERNAME`, and `ADMIN_PASSWORD`. Render generates `JWT_SECRET` from the Blueprint; keep it secret and do not add it to this repository. `PORT` is supplied by Render automatically.
+
 ## Development Build — required for real speech recognition
 
 `expo-speech-recognition` includes native code, so Expo Go is not sufficient for a real spoken interview. Camera preview/video recording works with Expo modules, but use a Development Build for the integrated product test.

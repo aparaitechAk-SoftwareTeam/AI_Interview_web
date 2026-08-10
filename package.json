@@ -18,11 +18,13 @@
     "react-dom": "19.2.3"
   },
   "scripts": {
+    "start": "npm run start --workspace @aparaitech/backend",
+    "render-build": "npm ci --omit=dev --workspace @aparaitech/backend --workspace @aparaitech/shared",
     "dev:backend": "npm run dev --workspace @aparaitech/backend",
     "dev:mobile": "npm run start --workspace @aparaitech/mobile",
     "test": "npm run test --workspace @aparaitech/backend",
     "lint": "npm run lint --workspaces --if-present",
     "seed": "npm run seed --workspace @aparaitech/backend"
   },
-  "engines": { "node": ">=22.0.0", "npm": ">=10.0.0" }
+  "engines": { "node": ">=22.0.0 <25.0.0", "npm": ">=10.0.0 <11.0.0" }
 }
