@@ -135,6 +135,7 @@ export const forceComplete = asyncHandler(async (req, res) => {
 
 export const uploadRecordingChunk = asyncHandler(async (req, res) => {
   const interview = await loadScopedInterview(req); if (!req.file?.buffer) throw new ApiError(400, "CHUNK_REQUIRED", "A recording chunk is required.");
+  if (![InterviewStatus.IN_PROGRESS, InterviewStatus.PROCESSING, InterviewStatus.COMPLETED].includes(interview.status)) throw new ApiError(409, "INTERVIEW_NOT_ACTIVE", "This interview is not accepting recording uploads.");
   const index = Number(req.body.index); if (!Number.isInteger(index) || index < 0 || index > 10000) throw new ApiError(400, "INVALID_CHUNK_INDEX", "Recording chunk index is invalid.");
   let recording = await InterviewRecording.findOne({ interviewId: interview._id });
   if (!recording) recording = await InterviewRecording.create({ interviewId: interview._id, candidateId: req.candidate._id, status: "UPLOADING", mimeType: req.file.mimetype || "video/mp4", retentionUntil: new Date(Date.now() + interview.configuration.recordingRetentionDays * 24 * 3600000) });
@@ -147,9 +148,11 @@ export const uploadRecordingChunk = asyncHandler(async (req, res) => {
 export const finalizeRecording = asyncHandler(async (req, res) => {
   const interview = await loadScopedInterview(req); const recording = await InterviewRecording.findOne({ interviewId: interview._id }).select("+storageKey");
   if (!recording) throw new ApiError(404, "RECORDING_NOT_FOUND", "No recording upload is in progress.");
+  if (recording.status === "READY" && recording.storageKey) return res.json({ recording: { id: recording.id, status: recording.status, fileSize: recording.fileSize, duplicate: true } });
   const ordered = [...recording.chunks].sort((a, b) => a.index - b.index); if (!ordered.length || ordered.some((chunk, index) => chunk.index !== index)) throw new ApiError(409, "RECORDING_CHUNKS_MISSING", "Some recording chunks are missing. The app can retry only the missing chunks.");
   const keys = ordered.map((chunk) => `recording-chunks/${recording.id}/${String(chunk.index).padStart(6, "0")}.part`); const outputKey = `recordings/${interview.id}/${recording.id}.${recordingFileExtension(recording.mimeType)}`;
-  await storage.concatenate(keys, outputKey); await Promise.all(keys.map((key) => storage.delete(key)));
+  await storage.concatenate(keys, outputKey);
   recording.storageKey = outputKey; recording.fileSize = ordered.reduce((total, chunk) => total + chunk.size, 0); recording.durationSeconds = Number(req.body.durationSeconds) || 0; recording.status = "READY"; await recording.save(); interview.recordingId = recording._id; await interview.save();
+  await Promise.all(keys.map((key) => storage.delete(key).catch(() => {})));
   res.json({ recording: { id: recording.id, status: recording.status, fileSize: recording.fileSize } });
 });

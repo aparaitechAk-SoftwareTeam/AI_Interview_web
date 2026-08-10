@@ -120,7 +120,7 @@ export const detail = asyncHandler(async (req, res) => {
   const [questions, answers, events, recording, adminDecision] = interview ? await Promise.all([InterviewQuestion.find({ interviewId: interview._id }).sort({ sequence: 1 }).lean(), InterviewAnswer.find({ interviewId: interview._id }).lean(), InterviewEvent.find({ interviewId: interview._id }).sort({ timestamp: 1 }).lean(), InterviewRecording.findOne({ interviewId: interview._id }).lean(), AdminDecision.findOne({ interviewId: interview._id }).populate("adminId", "fullName email").lean()]) : [[], [], [], null, null];
   const answerByQuestion = new Map(answers.map((item) => [String(item.questionId), item]));
   await writeAudit({ adminId: req.auth.sub, action: "CANDIDATE_VIEWED", resourceType: "Candidate", resourceId: candidate.id, ip: req.ip });
-  res.json({ candidate: candidateView(candidate), invitation: candidate.invitationId, resume: candidate.resumeId, interview: interview ? { ...interview.toObject(), integrity: calculateIntegrity(events) } : null, questionAnswers: questions.map((question) => ({ question, answer: answerByQuestion.get(String(question._id)) || null })), events, recording: recording ? { status: recording.status, durationSeconds: recording.durationSeconds, fileSize: recording.fileSize, retentionUntil: recording.retentionUntil } : null, adminDecision });
+  res.json({ candidate: candidateView(candidate), invitation: candidate.invitationId, resume: candidate.resumeId, interview: interview ? { ...interview.toObject(), integrity: calculateIntegrity(events) } : null, questionAnswers: questions.map((question) => ({ question, answer: answerByQuestion.get(String(question._id)) || null })), events, recording: recording ? { status: recording.status, durationSeconds: recording.durationSeconds, fileSize: recording.fileSize, chunkCount: recording.chunks?.length || 0, retentionUntil: recording.retentionUntil, updatedAt: recording.updatedAt } : null, adminDecision });
 });
 
 export const reset = asyncHandler(async (req, res) => {
@@ -162,7 +162,14 @@ export const streamRecording = asyncHandler(async (req, res) => {
   if (!recording || recording.status !== "READY" || !recording.storageKey) throw new ApiError(404, "RECORDING_NOT_FOUND", "Recording is not available.");
   const target = await storage.getPath(recording.storageKey); if (!fs.existsSync(target)) throw new ApiError(404, "RECORDING_NOT_FOUND", "Recording is not available.");
   await writeAudit({ adminId: req.auth.sub, action: "RECORDING_VIEWED", resourceType: "InterviewRecording", resourceId: recording.id, ip: req.ip });
-  res.setHeader("Content-Type", recording.mimeType || "video/mp4"); res.setHeader("Content-Length", recording.fileSize); fs.createReadStream(target).pipe(res);
+  const size = fs.statSync(target).size; const range = req.headers.range;
+  res.setHeader("Content-Type", recording.mimeType || "video/mp4"); res.setHeader("Accept-Ranges", "bytes"); res.setHeader("Cache-Control", "private, no-store");
+  if (!range) { res.setHeader("Content-Length", size); fs.createReadStream(target).pipe(res); return; }
+  const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+  if (!match) { res.status(416).setHeader("Content-Range", `bytes */${size}`).end(); return; }
+  const start = match[1] ? Number(match[1]) : 0; const end = match[2] ? Math.min(Number(match[2]), size - 1) : size - 1;
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || start > end || start >= size) { res.status(416).setHeader("Content-Range", `bytes */${size}`).end(); return; }
+  res.status(206); res.setHeader("Content-Range", `bytes ${start}-${end}/${size}`); res.setHeader("Content-Length", end - start + 1); fs.createReadStream(target, { start, end }).pipe(res);
 });
 
 export const deleteRecording = asyncHandler(async (req, res) => {

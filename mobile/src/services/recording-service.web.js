@@ -50,7 +50,12 @@ export const recordingService = {
     const suffix = blob.type.includes("webm") ? "webm" : "mp4";
     for (let offset = 0, index = 0; offset < blob.size; offset += chunkSize, index += 1) {
       const chunk = blob.slice(offset, Math.min(offset + chunkSize, blob.size), blob.type);
-      await api.uploadRecordingChunk(interviewId, chunk, index, suffix);
+      let lastError;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try { await api.uploadRecordingChunk(interviewId, chunk, index, suffix); lastError = null; break; }
+        catch (error) { lastError = error; await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1))); }
+      }
+      if (lastError) throw lastError;
     }
     return api.finalizeRecording(interviewId, durationSeconds);
   }

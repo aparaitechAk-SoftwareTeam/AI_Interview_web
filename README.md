@@ -152,6 +152,16 @@ If Gemini is unavailable or returns invalid JSON, the API returns a safe error a
 
 For production, replace the `LocalStorageProvider` behind `backend/src/services/storage/local-storage.js` with a private-bucket provider. Maintain the same `putBuffer`, `readBuffer`, `concatenate` and `delete` contract; use short-lived signed reads or the authenticated API proxy, never public object URLs.
 
+### Recording retention on Render
+
+The free Render filesystem is temporary. It can serve a recording only until the service restarts or redeploys, so it cannot guarantee that a recruiter can play a completed recording later. For protected recording retention, use a paid Render service with a persistent disk mounted at `/var/data/uploads`, then set this Render environment variable:
+
+```dotenv
+UPLOAD_DIR=/var/data/uploads
+```
+
+Persistent disks are attached in the Render service's **Disks** tab and keep only files below their mount path. A private object store is the better choice if you later run more than one API instance. The mobile app now retries recording chunks, persists the finished file locally while it uploads, and shows the upload state in the admin candidate profile.
+
 ## Seed and development credentials
 
 `npm run seed` creates/updates the administrator from `ADMIN_USERNAME` and `ADMIN_PASSWORD`. When `SEED_DEMO=true`, it also creates one development-only Rahul Patil invitation and prints its code once in the seed terminal. These values are not hardcoded in source.

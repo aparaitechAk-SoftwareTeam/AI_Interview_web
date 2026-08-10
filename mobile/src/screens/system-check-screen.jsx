@@ -18,6 +18,8 @@ export default function SystemCheckScreen() {
   const [microphone, setMicrophone] = useState(false);
   const [webCameraReady, setWebCameraReady] = useState(false);
   const [webSpeechReady, setWebSpeechReady] = useState(false);
+  const [speechReady, setSpeechReady] = useState(false);
+  const [speechNote, setSpeechNote] = useState("");
   const [voiceTested, setVoiceTested] = useState(false);
   const [error, setError] = useState("");
   const isWeb = Platform.OS === "web";
@@ -48,9 +50,13 @@ export default function SystemCheckScreen() {
       }
       const camera = cameraPermission?.granted ? cameraPermission : await requestCamera();
       const audio = await AudioModule.requestRecordingPermissionsAsync();
-      const speech = await speechRecognition.requestPermissions();
-      setMicrophone(Boolean(audio.granted && speech.granted));
-      if (!camera.granted || !audio.granted || !speech.granted) setError("Camera, microphone, and speech permissions are required to continue. Enable them in system settings if previously denied.");
+      setMicrophone(Boolean(audio.granted));
+      const available = speechRecognition.isAvailable();
+      if (available) {
+        try { const speech = await speechRecognition.requestPermissions(); setSpeechReady(Boolean(speech.granted)); if (!speech.granted) setSpeechNote("Voice transcription permission is unavailable. You can still type every answer."); }
+        catch { setSpeechReady(false); setSpeechNote("Voice transcription is not available on this device. You can still type every answer."); }
+      } else { setSpeechReady(false); setSpeechNote("Voice transcription is not installed or enabled on this device. Typed answers remain fully supported."); }
+      if (!camera.granted || !audio.granted) setError("Camera and microphone permissions are required to record this interview. Enable them in system settings if previously denied.");
     } catch (reason) {
       setError(reason.message || "Unable to request device permissions.");
     }
@@ -77,11 +83,12 @@ export default function SystemCheckScreen() {
     <Card>
       {cameraReady ? <CameraView style={{ height: 190, overflow: "hidden", borderRadius: 16 }} facing="front" mirror /> : <View style={{ height: 140, borderRadius: 16, backgroundColor: colors.dark, justifyContent: "center", alignItems: "center", padding: 18 }}><Text selectable style={{ color: colors.white, textAlign: "center" }}>Camera preview appears after you allow browser permission.</Text></View>}
       <SystemCheckRow label="Camera permission" ready={cameraReady} detail={cameraReady ? "Preview is active." : "Required for the interview camera recording."} />
-      <SystemCheckRow label="Microphone permission" ready={microphone} detail={microphone ? "Ready for spoken answers and browser recording." : "Required for spoken answers."} />
-      {isWeb ? <SystemCheckRow label="Speech recognition" ready={webSpeechReady} detail={webSpeechReady ? "Browser voice input is available after AI speech finishes." : "Optional on this browser. Typed answers remain available."} /> : null}
+      <SystemCheckRow label="Microphone permission" ready={microphone} detail={microphone ? "Ready for protected video recording and voice input." : "Required for protected interview recording."} />
+      <SystemCheckRow label="Voice transcription" ready={isWeb ? webSpeechReady : speechReady} detail={isWeb ? (webSpeechReady ? "Browser voice input is available after AI speech finishes." : "Optional on this browser. Typed answers remain available.") : (speechReady ? "Voice input is ready. Typed answers are always available as a backup." : "Optional. Typed answers are always available as a backup.")} />
       <SystemCheckRow label="Resume processing" ready detail="Your uploaded resume is available to the interview engine." />
       <SystemCheckRow label="Attention signals" ready={false} detail="App interruption signals are active. Face/gaze landmarks require the optional native vision module and are not asserted by this build." />
     </Card>
+    {speechNote ? <Text selectable style={{ color: colors.warning, lineHeight: 20 }}>{speechNote}</Text> : null}
     {isWeb ? <Button title={voiceTested ? "AI voice checked" : "Test AI voice"} variant="secondary" onPress={testVoice} /> : null}
     <ErrorBanner message={error} />
     <Button title={ready ? "Continue to consent" : isWeb ? "Allow browser camera & microphone" : "Grant required permissions"} onPress={ready ? () => router.push({ pathname: "/interview-consent", params: { candidateId, candidateName } }) : requestAll} />
