@@ -100,6 +100,23 @@ Health Check Path: /health
 
 Create a Render Blueprint from the repository, or set the same values in an existing Web Service's Settings. In Render's Environment page set `MONGODB_URI`, `GOOGLE_GENERATIVE_AI_API_KEY`, `CORS_ORIGINS`, `ADMIN_USERNAME`, and `ADMIN_PASSWORD`. Render generates `JWT_SECRET` from the Blueprint; keep it secret and do not add it to this repository. `PORT` is supplied by Render automatically.
 
+## Build an Android APK without Android Studio
+
+The `preview` EAS profile creates an installable APK on Expo's cloud builders, so it does not require Android Studio, an Android SDK, or a global Expo installation on your computer. It is configured to use the deployed Render API.
+
+```powershell
+cd mobile
+npx eas-cli@latest login
+npx eas-cli@latest whoami
+npx eas-cli@latest build --platform android --profile preview
+```
+
+On the first build, let EAS create/link the Expo project and generate the Android keystore. After the cloud build finishes, open the provided link on the Android phone and install the APK. For Google Play Store upload, build an AAB instead:
+
+```powershell
+npx eas-cli@latest build --platform android --profile production
+```
+
 ## Development Build — required for real speech recognition
 
 `expo-speech-recognition` includes native code, so Expo Go is not sufficient for a real spoken interview. Camera preview/video recording works with Expo modules, but use a Development Build for the integrated product test.
