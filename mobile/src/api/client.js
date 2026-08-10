@@ -1,4 +1,5 @@
 import Constants from "expo-constants";
+import { File } from "expo-file-system";
 import { secureStorage } from "../services/secure-storage";
 
 const INTERVIEW_TOKEN = "aparaitech.interview-token";
@@ -42,7 +43,19 @@ export const api = {
   health: () => request("/health"),
   verifyInvitation: async (code) => { const result = await request("/api/invitations/verify", { method: "POST", body: { code } }); await setTokens(result.tokens); return result; },
   candidateStatus: () => statusRequest("/api/candidates/status"),
-  uploadResume: (candidateId, asset) => { const data = new FormData(); if (asset.file) data.append("resume", asset.file, asset.name || asset.file.name); else data.append("resume", { uri: asset.uri, name: asset.name || "resume.pdf", type: asset.mimeType || "application/pdf" }); return interviewRequest(`/api/candidates/${candidateId}/resume`, { method: "POST", body: data }); },
+  uploadResume: (candidateId, asset) => {
+    const data = new FormData();
+    if (asset.file) {
+      // Browsers provide a native File object through DocumentPicker.
+      data.append("resume", asset.file, asset.name || asset.file.name);
+    } else {
+      // On Android/iOS, Expo's File object is required for reliable multipart
+      // uploads. The legacy { uri, name, type } object can make native fetch
+      // reject the request before it reaches the server.
+      data.append("resume", new File(asset.uri), asset.name || "resume.pdf");
+    }
+    return interviewRequest(`/api/candidates/${candidateId}/resume`, { method: "POST", body: data });
+  },
   startInterview: (consent) => interviewRequest("/api/interviews/start", { method: "POST", body: { consent } }),
   currentInterview: (id) => interviewRequest(`/api/interviews/${id}/current`),
   submitAnswer: (id, answer, idempotencyKey) => interviewRequest(`/api/interviews/${id}/answers`, { method: "POST", body: answer, headers: { "Idempotency-Key": idempotencyKey } }),
@@ -50,9 +63,8 @@ export const api = {
   completeInterview: (id) => interviewRequest(`/api/interviews/${id}/complete`, { method: "POST" }),
   uploadRecordingChunk: async (id, blob, index, suffix = "mp4") => {
     const data = new FormData();
-    const type = blob.type || "video/mp4";
     if (typeof Blob !== "undefined" && blob instanceof Blob) data.append("chunk", blob, `chunk-${index}.${suffix}`);
-    else data.append("chunk", { uri: blob.uri, name: `chunk-${index}.${suffix}`, type });
+    else data.append("chunk", new File(blob.uri), `chunk-${index}.${suffix}`);
     data.append("index", String(index));
     return interviewRequest(`/api/interviews/${id}/recording/chunks`, { method: "POST", body: data });
   },
