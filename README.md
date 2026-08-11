@@ -63,13 +63,16 @@ SMTP_PORT=587
 SMTP_SECURE=false
 SMTP_USER=notifications@your-domain.com
 SMTP_PASSWORD=your-provider-app-password
-MAIL_FROM=Aparaitech Recruitment <notifications@your-domain.com>
+MAIL_FROM=notifications@your-domain.com
+MAIL_FROM_NAME=Aparaitech Recruitment
 MAIL_REPLY_TO=hr@your-domain.com
 CANDIDATE_PORTAL_URL=https://your-candidate-portal.example.com
 SUPPORT_EMAIL=hr@your-domain.com
 ```
 
 Use an SMTP app password, not an everyday mailbox password. A failed delivery does not create a duplicate candidate: the invitation remains valid and the separate **Candidate Registry** page shows `SENT`, `FAILED`, or `NOT CONFIGURED` for every invitation.
+
+For Brevo Transactional Email, use `MAIL_PROVIDER=brevo`, `BREVO_API_KEY`, `MAIL_FROM`, and optionally `MAIL_FROM_NAME`. Brevo API keys must stay in local/Render environment variables and must never be committed to Git.
 
 Set the physical-device reachable backend address in `mobile/.env`—use your computer's LAN IP, not `localhost`.
 

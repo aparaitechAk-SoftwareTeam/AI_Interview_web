@@ -30,7 +30,10 @@ const schema = z.object({
   SMTP_SECURE: z.enum(["true", "false"]).default("false"),
   SMTP_USER: z.string().trim().min(1).max(255).optional(),
   SMTP_PASSWORD: z.string().min(1).max(500).optional(),
+  MAIL_PROVIDER: z.enum(["disabled", "smtp", "brevo"]).default("disabled"),
+  BREVO_API_KEY: z.string().min(1).max(500).optional(),
   MAIL_FROM: z.string().trim().min(3).max(320).optional(),
+  MAIL_FROM_NAME: z.string().trim().min(1).max(70).default("Aparaitech Recruitment"),
   MAIL_REPLY_TO: z.string().email().optional(),
   CANDIDATE_PORTAL_URL: z.string().url().optional(),
   SUPPORT_EMAIL: z.string().email().optional(),
@@ -41,7 +44,9 @@ const result = schema.safeParse(process.env);
 if (!result.success) throw new Error(`Invalid environment: ${result.error.issues.map((x) => x.message).join(", ")}`);
 const values = result.data;
 if (values.NODE_ENV === "production" && !values.JWT_SECRET && !values.AUTH_SECRET) throw new Error("JWT_SECRET or AUTH_SECRET is required in production.");
-if (values.SMTP_ENABLED === "true" && (!values.SMTP_HOST || !values.SMTP_USER || !values.SMTP_PASSWORD || !values.MAIL_FROM)) throw new Error("SMTP_HOST, SMTP_USER, SMTP_PASSWORD, and MAIL_FROM are required when SMTP_ENABLED=true.");
+const smtpRequested = values.MAIL_PROVIDER === "smtp" || values.SMTP_ENABLED === "true";
+if (smtpRequested && (!values.SMTP_HOST || !values.SMTP_USER || !values.SMTP_PASSWORD || !values.MAIL_FROM)) throw new Error("SMTP_HOST, SMTP_USER, SMTP_PASSWORD, and MAIL_FROM are required when SMTP mail is enabled.");
+if (values.MAIL_PROVIDER === "brevo" && (!values.BREVO_API_KEY || !values.MAIL_FROM)) throw new Error("BREVO_API_KEY and MAIL_FROM are required when MAIL_PROVIDER=brevo.");
 
 export const env = Object.freeze({
   ...values,

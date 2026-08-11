@@ -8,9 +8,26 @@ function escapeHtml(value) {
 }
 function formatExpiry(value) { return new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" }).format(new Date(value)); }
 function getTransporter() {
-  if (!env.SMTP_ENABLED) return null;
+  if (env.MAIL_PROVIDER !== "smtp" && !env.SMTP_ENABLED) return null;
   if (!transporter) transporter = nodemailer.createTransport({ host: env.SMTP_HOST, port: env.SMTP_PORT, secure: env.SMTP_SECURE, auth: { user: env.SMTP_USER, pass: env.SMTP_PASSWORD }, connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 15000 });
   return transporter;
+}
+async function sendWithBrevo({ candidate, message }) {
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", "api-key": env.BREVO_API_KEY },
+    body: JSON.stringify({
+      sender: { email: env.MAIL_FROM, name: env.MAIL_FROM_NAME },
+      to: [{ email: candidate.email, name: candidate.fullName }],
+      replyTo: env.MAIL_REPLY_TO ? { email: env.MAIL_REPLY_TO, name: env.MAIL_FROM_NAME } : undefined,
+      subject: message.subject,
+      htmlContent: message.html
+    }),
+    signal: AbortSignal.timeout(15000)
+  });
+  if (!response.ok) throw new Error(`Brevo delivery failed (HTTP ${response.status})`);
+  const body = await response.json().catch(() => ({}));
+  return { messageId: String(body.messageId || "") };
 }
 function content({ candidate, invitation }) {
   const name = escapeHtml(candidate.fullName); const position = escapeHtml(candidate.position || "the open role"); const code = escapeHtml(invitation.code); const expiresAt = formatExpiry(invitation.expiresAt); const portal = env.CANDIDATE_PORTAL_URL ? `<p style="margin:24px 0"><a href="${escapeHtml(env.CANDIDATE_PORTAL_URL)}" style="display:inline-block;background:#315cf4;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700">Open interview portal</a></p>` : "";
@@ -24,11 +41,14 @@ function content({ candidate, invitation }) {
 export const invitationEmail = {
   async send({ candidate, invitation }) {
     const attemptedAt = new Date();
-    const transport = getTransporter();
-    if (!transport) return { status: "NOT_CONFIGURED", lastAttemptAt: attemptedAt, error: "SMTP is not configured" };
+    const usingBrevo = env.MAIL_PROVIDER === "brevo";
+    const transport = usingBrevo ? null : getTransporter();
+    if (!usingBrevo && !transport) return { status: "NOT_CONFIGURED", lastAttemptAt: attemptedAt, error: "Email delivery is not configured" };
     try {
       const message = content({ candidate, invitation });
-      const result = await transport.sendMail({ from: env.MAIL_FROM, to: candidate.email, replyTo: env.MAIL_REPLY_TO || undefined, ...message });
+      const result = usingBrevo
+        ? await sendWithBrevo({ candidate, message })
+        : await transport.sendMail({ from: env.MAIL_FROM, to: candidate.email, replyTo: env.MAIL_REPLY_TO || undefined, ...message });
       return { status: "SENT", lastAttemptAt: attemptedAt, sentAt: new Date(), messageId: String(result.messageId || "") };
     } catch (error) {
       return { status: "FAILED", lastAttemptAt: attemptedAt, error: String(error?.message || "SMTP delivery failed").slice(0, 300) };
