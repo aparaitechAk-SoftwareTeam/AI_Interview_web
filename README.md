@@ -44,6 +44,7 @@ Set these values in `backend/.env`; do not put them in `mobile/.env` or source c
 
 ```dotenv
 MONGODB_URI=mongodb+srv://USER:PASSWORD@cluster.example.mongodb.net/ai_mock_interviews?retryWrites=true&w=majority
+MONGODB_DNS_SERVERS=
 MONGODB_DB=ai_mock_interviews
 JWT_SECRET=use-a-new-random-64-character-value
 GOOGLE_GENERATIVE_AI_API_KEY=your-gemini-key
@@ -51,6 +52,8 @@ ADMIN_USERNAME=administrator
 ADMIN_PASSWORD=a-local-development-password-of-at-least-12-characters
 SEED_DEMO=true
 ```
+
+If your local network DNS rejects MongoDB SRV lookups, set `MONGODB_DNS_SERVERS=1.1.1.1,8.8.8.8` in `backend/.env`. This is optional and should be left empty when your system DNS works normally.
 
 ## Automatic candidate invitation email
 

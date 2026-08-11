@@ -13,6 +13,8 @@ services:
         value: production
       - key: MONGODB_URI
         sync: false
+      - key: MONGODB_DNS_SERVERS
+        sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: GOOGLE_GENERATIVE_AI_API_KEY
