@@ -6,6 +6,7 @@ import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
 
 const heroImage = require("../../assets/images/interview-hero-v2.png");
+const brandLogo = require("../../assets/images/aparaitech-interview-logo.png");
 
 export const portal = {
   background: "#020817",
@@ -31,7 +32,7 @@ export function SecurePortal({ routeTitle, eyebrow, heading, description, accent
           <Pressable accessibilityRole="button" accessibilityLabel="Back to home" onPress={() => router.back()} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
             <Text style={styles.backArrow}>←</Text><Text selectable style={styles.backText}>Home</Text>
           </Pressable>
-          <View style={styles.routeMark}><Text style={styles.routeMarkText}>A</Text><Text selectable style={styles.routeTitle}>{routeTitle}</Text></View>
+          <View style={styles.routeMark}><Image source={brandLogo} contentFit="contain" style={styles.routeMarkImage} accessibilityLabel="Aparaitech AI Interview logo" /><Text selectable style={styles.routeTitle}>{routeTitle}</Text></View>
         </View>
 
         <View style={styles.hero}>
@@ -102,7 +103,7 @@ const styles = StyleSheet.create({
   backArrow: { color: "#C6D7F4", fontSize: 25, lineHeight: 28 },
   backText: { color: "#C6D7F4", fontSize: 13, fontWeight: "700" },
   routeMark: { flexDirection: "row", alignItems: "center", gap: 8 },
-  routeMarkText: { width: 28, height: 28, overflow: "hidden", borderRadius: 10, textAlign: "center", textAlignVertical: "center", color: "#F6FAFF", fontSize: 15, fontWeight: "900", backgroundColor: "#3358E8" },
+  routeMarkImage: { width: 32, height: 32, borderRadius: 10 },
   routeTitle: { color: "#EAF0FF", fontSize: 14, fontWeight: "800" },
   hero: { minHeight: 235, position: "relative", justifyContent: "flex-end", overflow: "hidden" },
   heroArt: { position: "absolute", width: 255, height: 205, top: 10, right: -4, opacity: 0.9 },

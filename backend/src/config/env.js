@@ -18,7 +18,7 @@ const schema = z.object({
   AI_FALLBACK_MODELS: z.string().default("gemini-3.1-flash-lite,gemini-flash-lite-latest"),
   AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(20000),
   AI_MAX_RETRIES: z.coerce.number().int().min(0).max(3).default(2),
-  STORAGE_PROVIDER: z.enum(["local"]).default("local"),
+  STORAGE_PROVIDER: z.enum(["local", "gridfs"]).optional(),
   UPLOAD_DIR: z.string().default("./uploads"),
   MAX_UPLOAD_MB: z.coerce.number().int().min(1).max(100).default(10),
   CORS_ORIGINS: z.string().default("http://localhost:8081,exp://127.0.0.1:8081"),
@@ -52,6 +52,7 @@ if (values.MAIL_PROVIDER === "brevo" && (!values.BREVO_API_KEY || !values.MAIL_F
 export const env = Object.freeze({
   ...values,
   JWT_SECRET: values.JWT_SECRET || values.AUTH_SECRET || "development-only-secret-change-before-production-000000",
+  STORAGE_PROVIDER: values.STORAGE_PROVIDER || (values.NODE_ENV === "production" ? "gridfs" : "local"),
   UPLOAD_DIR: path.resolve(process.cwd(), values.UPLOAD_DIR),
   MONGODB_DNS_SERVERS: values.MONGODB_DNS_SERVERS.split(",").map((server) => server.trim()).filter(Boolean),
   CORS_ORIGINS: values.CORS_ORIGINS.split(",").map((origin) => origin.trim()).filter(Boolean),

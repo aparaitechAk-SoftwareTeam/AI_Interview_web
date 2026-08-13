@@ -3,6 +3,7 @@ import { Switch, Text, View } from "react-native";
 import { router } from "expo-router";
 import { api } from "../api/client";
 import { adminSession } from "../services/admin-session";
+import { openInvitationWhatsApp } from "../services/whatsapp-click-to-chat";
 import { Screen } from "../components/screen";
 import { Field } from "../components/field";
 import { Card } from "../components/card";
@@ -11,7 +12,53 @@ import { ErrorBanner } from "../components/error-banner";
 import { colors } from "../theme/colors";
 
 export default function AdminCreateCandidateScreen() {
-  const [form, setForm] = useState({ fullName: "", email: "", phone: "", college: "", qualification: "", position: "", notes: "", validityHours: "168", singleUse: false }); const [created, setCreated] = useState(null); const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
-  const submit = async () => { setLoading(true); setError(""); try { const token = await adminSession.get(); if (!token) return router.replace("/admin-login"); const data = await api.createCandidate(token, { ...form, validityHours: Number(form.validityHours) }); setCreated(data); } catch (reason) { setError(reason.message); } finally { setLoading(false); } };
-  return <Screen><Text selectable style={{ color: colors.muted, lineHeight: 21 }}>Candidate details are entered once by an authorized administrator. The candidate will see these read-only after code verification.</Text><Field label="Full name" value={form.fullName} onChangeText={(x) => set("fullName", x)} /><Field label="Email" value={form.email} onChangeText={(x) => set("email", x)} autoCapitalize="none" keyboardType="email-address" /><Field label="Mobile number" value={form.phone} onChangeText={(x) => set("phone", x)} keyboardType="phone-pad" /><Field label="Position / internship role" value={form.position} onChangeText={(x) => set("position", x)} /><Field label="College / institute (optional)" value={form.college} onChangeText={(x) => set("college", x)} /><Field label="Qualification (optional)" value={form.qualification} onChangeText={(x) => set("qualification", x)} /><Field label="Private admin notes (optional)" value={form.notes} onChangeText={(x) => set("notes", x)} multiline /><Field label="Validity hours" value={form.validityHours} onChangeText={(x) => set("validityHours", x)} keyboardType="number-pad" /><View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}><Switch value={form.singleUse} onValueChange={(x) => set("singleUse", x)} /><Text selectable style={{ color: colors.text, fontWeight: "700" }}>Single-use invitation</Text></View><ErrorBanner message={error} /><Button title="Create candidate and invitation" loading={loading} disabled={!form.fullName || !form.email || !form.phone} onPress={submit} />{created ? <Card><Text selectable style={{ color: colors.text, fontWeight: "900", fontSize: 18 }}>Invitation created</Text><Text selectable style={{ color: colors.brand, fontSize: 22, fontWeight: "900" }}>{created.invitation.code}</Text><Text selectable style={{ color: colors.muted }}>Expires {new Date(created.invitation.expiresAt).toLocaleString()}</Text><Text selectable style={{ color: created.invitation.emailDelivery?.status === "SENT" ? colors.success : colors.warning, fontWeight: "800" }}>Email delivery: {created.invitation.emailDelivery?.status?.replaceAll("_", " ") || "PENDING"}</Text><Text selectable style={{ color: colors.warning, lineHeight: 20 }}>{created.invitation.emailDelivery?.status === "SENT" ? "A secure invitation email with the code, timing, terms and preparation instructions was sent to the candidate." : "Email is not confirmed yet. Check the Candidate Registry delivery state or share this code using an approved channel."}</Text><Button title="View candidate" variant="secondary" onPress={() => router.replace(`/admin-candidate/${created.candidate.id}`)} /></Card> : null}</Screen>;
+  const [form, setForm] = useState({ fullName: "", email: "", phone: "", college: "", qualification: "", position: "", notes: "", validityHours: "168", singleUse: false });
+  const [created, setCreated] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+
+  const submit = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const token = await adminSession.get();
+      if (!token) return router.replace("/admin-login");
+      const data = await api.createCandidate(token, { ...form, validityHours: Number(form.validityHours) });
+      setCreated(data);
+    } catch (reason) { setError(reason.message); }
+    finally { setLoading(false); }
+  };
+
+  const openWhatsApp = async () => {
+    try {
+      setError("");
+      await openInvitationWhatsApp({ candidate: created.candidate, invitation: created.invitation });
+    } catch (reason) { setError(reason.message); }
+  };
+
+  return <Screen>
+    <Text selectable style={{ color: colors.muted, lineHeight: 21 }}>Candidate details are entered once by an authorized administrator. The candidate will see these read-only after code verification.</Text>
+    <Field label="Full name" value={form.fullName} onChangeText={(x) => set("fullName", x)} />
+    <Field label="Email" value={form.email} onChangeText={(x) => set("email", x)} autoCapitalize="none" keyboardType="email-address" />
+    <Field label="Mobile number" value={form.phone} onChangeText={(x) => set("phone", x)} keyboardType="phone-pad" />
+    <Field label="Position / internship role" value={form.position} onChangeText={(x) => set("position", x)} />
+    <Field label="College / institute (optional)" value={form.college} onChangeText={(x) => set("college", x)} />
+    <Field label="Qualification (optional)" value={form.qualification} onChangeText={(x) => set("qualification", x)} />
+    <Field label="Private admin notes (optional)" value={form.notes} onChangeText={(x) => set("notes", x)} multiline />
+    <Field label="Validity hours" value={form.validityHours} onChangeText={(x) => set("validityHours", x)} keyboardType="number-pad" />
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}><Switch value={form.singleUse} onValueChange={(x) => set("singleUse", x)} /><Text selectable style={{ color: colors.text, fontWeight: "700" }}>Single-use invitation</Text></View>
+    <ErrorBanner message={error} />
+    <Button title="Create candidate and invitation" loading={loading} disabled={!form.fullName || !form.email || !form.phone} onPress={submit} />
+    {created ? <Card>
+      <Text selectable style={{ color: colors.text, fontWeight: "900", fontSize: 18 }}>Invitation created</Text>
+      <Text selectable style={{ color: colors.brand, fontSize: 22, fontWeight: "900" }}>{created.invitation.code}</Text>
+      <Text selectable style={{ color: colors.muted }}>Expires {new Date(created.invitation.expiresAt).toLocaleString()}</Text>
+      <Text selectable style={{ color: created.invitation.emailDelivery?.status === "SENT" ? colors.success : colors.warning, fontWeight: "800" }}>Email delivery: {created.invitation.emailDelivery?.status?.replaceAll("_", " ") || "PENDING"}</Text>
+      <Text selectable style={{ color: colors.warning, lineHeight: 20 }}>{created.invitation.emailDelivery?.status === "SENT" ? "A secure invitation email with the code, timing, terms and preparation instructions was sent to the candidate." : "Email is not confirmed yet. Check the Candidate Registry delivery state or share this code using an approved channel."}</Text>
+      <Button title="Open WhatsApp invitation" variant="secondary" onPress={openWhatsApp} />
+      <Text selectable style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>Free Click-to-Chat only. The message is pre-filled from this candidate record; you must tap Send manually in WhatsApp.</Text>
+      <Button title="View candidate" variant="secondary" onPress={() => router.replace(`/admin-candidate/${created.candidate.id}`)} />
+    </Card> : null}
+  </Screen>;
 }

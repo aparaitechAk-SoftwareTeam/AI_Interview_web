@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import crypto from "node:crypto";
 import { Candidate, Resume } from "../models/index.js";
 import { CandidateStatus } from "@aparaitech/shared";
@@ -6,7 +5,7 @@ import { asyncHandler } from "../utils/async-handler.js";
 import { ApiError } from "../utils/api-error.js";
 import { canonicalResumeMimeType, validateResumeFile } from "../services/resume/file-validation.js";
 import { parseResume } from "../services/resume/resume-parser.js";
-import { storage } from "../services/storage/local-storage.js";
+import { storage } from "../services/storage/index.js";
 import { assertCandidateId } from "../middleware/candidate-scope.js";
 
 const publicStatus = (candidate) => ({ id: candidate.id, fullName: candidate.fullName, position: candidate.position, status: candidate.status, updatedAt: candidate.updatedAt });
@@ -37,7 +36,6 @@ export const uploadResume = asyncHandler(async (req, res) => {
 export const downloadOwnResume = asyncHandler(async (req, res) => {
   const resume = await Resume.findOne({ _id: req.params.resumeId, candidateId: req.candidate._id }).select("+storageKey");
   if (!resume) throw new ApiError(404, "RESUME_NOT_FOUND", "Resume was not found.");
-  const target = await storage.getPath(resume.storageKey);
-  if (!fs.existsSync(target)) throw new ApiError(404, "FILE_NOT_FOUND", "Resume file is unavailable.");
-  res.setHeader("Content-Type", resume.mimeType); res.setHeader("Content-Disposition", `attachment; filename="${resume.originalName}"`); fs.createReadStream(target).pipe(res);
+  if (!(await storage.exists(resume.storageKey))) throw new ApiError(404, "FILE_NOT_FOUND", "Resume file is unavailable.");
+  res.setHeader("Content-Type", resume.mimeType); res.setHeader("Content-Disposition", `attachment; filename="${resume.originalName}"`); (await storage.createReadStream(resume.storageKey)).pipe(res);
 });

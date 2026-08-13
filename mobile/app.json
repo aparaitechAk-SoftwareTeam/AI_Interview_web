@@ -2,6 +2,7 @@
   "expo": {
     "name": "Aparaitech Interview Software",
     "slug": "aparaitech-interview-software",
+    "icon": "./assets/images/aparaitech-interview-logo.png",
     "scheme": "aparaitech-interview",
     "version": "1.0.0",
     "orientation": "portrait",

@@ -24,4 +24,4 @@ The following device/system scenarios are acceptance cases for a Development Bui
 
 ## Required real-device sign-off
 
-Before production, test camera, microphone, native speech recognition, background behavior and camera-video recording on an Android Development Build. Full-screen capture and face/gaze landmark detection are intentionally not claimed: they need separate native modules, store disclosures and device-specific validation.
+Before production, test camera, microphone, native speech recognition, background behavior and camera-video recording on an Android Development Build. Verify at least ten consecutive spoken questions, interrupt and restore the network during final upload, confirm resumed missing-chunk upload reaches 100%, and play the authenticated video with audio from the candidate's admin profile. Full-screen capture and face/gaze landmark detection are intentionally not claimed: they need separate native modules, store disclosures and device-specific validation.

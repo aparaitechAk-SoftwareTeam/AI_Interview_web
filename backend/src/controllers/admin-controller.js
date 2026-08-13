@@ -1,5 +1,4 @@
 import bcrypt from "bcryptjs";
-import fs from "node:fs";
 import { CandidateStatus, InterviewStatus } from "@aparaitech/shared";
 import { Admin, AdminDecision, Candidate, Interview, InterviewAnswer, InterviewEvent, InterviewQuestion, InterviewRecording, Invitation, Resume } from "../models/index.js";
 import { asyncHandler } from "../utils/async-handler.js";
@@ -7,9 +6,11 @@ import { ApiError } from "../utils/api-error.js";
 import { createInvitationCode } from "../utils/crypto.js";
 import { writeAudit } from "../utils/audit.js";
 import { calculateIntegrity } from "../utils/integrity.js";
-import { storage } from "../services/storage/local-storage.js";
+import { storage } from "../services/storage/index.js";
 import { invitationEmail } from "../services/notifications/invitation-email.js";
 import { createCandidate, decision, resetInvitation, terminate } from "../validators/request.js";
+
+const recordingChunkKey = (recordingId, index) => `recording-chunks/${recordingId}/${String(index).padStart(6, "0")}.part`;
 
 async function newInvitation(candidateId, adminId, validityHours, singleUse = false) {
   for (let tries = 0; tries < 5; tries += 1) {
@@ -146,7 +147,7 @@ export const detail = asyncHandler(async (req, res) => {
   const [questions, answers, events, recording, adminDecision] = interview ? await Promise.all([InterviewQuestion.find({ interviewId: interview._id }).sort({ sequence: 1 }).lean(), InterviewAnswer.find({ interviewId: interview._id }).lean(), InterviewEvent.find({ interviewId: interview._id }).sort({ timestamp: 1 }).lean(), InterviewRecording.findOne({ interviewId: interview._id }).lean(), AdminDecision.findOne({ interviewId: interview._id }).populate("adminId", "fullName email").lean()]) : [[], [], [], null, null];
   const answerByQuestion = new Map(answers.map((item) => [String(item.questionId), item]));
   await writeAudit({ adminId: req.auth.sub, action: "CANDIDATE_VIEWED", resourceType: "Candidate", resourceId: candidate.id, ip: req.ip });
-  res.json({ candidate: candidateView(candidate), invitation: invitationView(candidate.invitationId), resume: candidate.resumeId, interview: interview ? { ...interview.toObject(), integrity: calculateIntegrity(events) } : null, questionAnswers: questions.map((question) => ({ question, answer: answerByQuestion.get(String(question._id)) || null })), events, recording: recording ? { status: recording.status, durationSeconds: recording.durationSeconds, fileSize: recording.fileSize, chunkCount: recording.chunks?.length || 0, retentionUntil: recording.retentionUntil, updatedAt: recording.updatedAt } : null, adminDecision });
+  res.json({ candidate: candidateView(candidate), invitation: invitationView(candidate.invitationId), resume: candidate.resumeId, interview: interview ? { ...interview.toObject(), integrity: calculateIntegrity(events) } : null, questionAnswers: questions.map((question) => ({ question, answer: answerByQuestion.get(String(question._id)) || null })), events, recording: recording ? { status: recording.status, mimeType: recording.mimeType, durationSeconds: recording.durationSeconds, fileSize: recording.fileSize, chunkCount: recording.chunks?.length || 0, expectedChunks: recording.expectedChunks || 0, expectedBytes: recording.expectedBytes || 0, lastError: recording.lastError || null, finalizedAt: recording.finalizedAt || null, retentionUntil: recording.retentionUntil, updatedAt: recording.updatedAt } : null, adminDecision });
 });
 
 export const reset = asyncHandler(async (req, res) => {
@@ -187,22 +188,24 @@ export const decide = asyncHandler(async (req, res) => {
 export const streamRecording = asyncHandler(async (req, res) => {
   const recording = await InterviewRecording.findOne({ interviewId: req.params.interviewId }).select("+storageKey");
   if (!recording || recording.status !== "READY" || !recording.storageKey) throw new ApiError(404, "RECORDING_NOT_FOUND", "Recording is not available.");
-  const target = await storage.getPath(recording.storageKey); if (!fs.existsSync(target)) throw new ApiError(404, "RECORDING_NOT_FOUND", "Recording is not available.");
+  if (!(await storage.exists(recording.storageKey))) throw new ApiError(404, "RECORDING_NOT_FOUND", "Recording is not available.");
   await writeAudit({ adminId: req.auth.sub, action: "RECORDING_VIEWED", resourceType: "InterviewRecording", resourceId: recording.id, ip: req.ip });
-  const size = fs.statSync(target).size; const range = req.headers.range;
+  const { size } = await storage.stat(recording.storageKey); const range = req.headers.range;
   res.setHeader("Content-Type", recording.mimeType || "video/mp4"); res.setHeader("Accept-Ranges", "bytes"); res.setHeader("Cache-Control", "private, no-store");
-  if (!range) { res.setHeader("Content-Length", size); fs.createReadStream(target).pipe(res); return; }
+  if (!range) { res.setHeader("Content-Length", size); (await storage.createReadStream(recording.storageKey)).pipe(res); return; }
   const match = /^bytes=(\d*)-(\d*)$/.exec(range);
   if (!match) { res.status(416).setHeader("Content-Range", `bytes */${size}`).end(); return; }
   const start = match[1] ? Number(match[1]) : 0; const end = match[2] ? Math.min(Number(match[2]), size - 1) : size - 1;
   if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || start > end || start >= size) { res.status(416).setHeader("Content-Range", `bytes */${size}`).end(); return; }
-  res.status(206); res.setHeader("Content-Range", `bytes ${start}-${end}/${size}`); res.setHeader("Content-Length", end - start + 1); fs.createReadStream(target, { start, end }).pipe(res);
+  res.status(206); res.setHeader("Content-Range", `bytes ${start}-${end}/${size}`); res.setHeader("Content-Length", end - start + 1); (await storage.createReadStream(recording.storageKey, { start, end })).pipe(res);
 });
 
 export const deleteRecording = asyncHandler(async (req, res) => {
   const recording = await InterviewRecording.findOne({ interviewId: req.params.interviewId }).select("+storageKey");
   if (!recording || recording.status === "DELETED") throw new ApiError(404, "RECORDING_NOT_FOUND", "Recording is not available.");
-  if (recording.storageKey) await storage.delete(recording.storageKey); recording.status = "DELETED"; recording.deletedAt = new Date(); recording.deleteReason = "Deleted by authorized admin"; recording.storageKey = undefined; await recording.save();
+  if (recording.storageKey) await storage.delete(recording.storageKey);
+  await Promise.all((recording.chunks || []).map((chunk) => storage.delete(recordingChunkKey(recording.id, chunk.index)).catch(() => {})));
+  recording.status = "DELETED"; recording.deletedAt = new Date(); recording.deleteReason = "Deleted by authorized admin"; recording.storageKey = undefined; await recording.save();
   await writeAudit({ adminId: req.auth.sub, action: "RECORDING_DELETED", resourceType: "InterviewRecording", resourceId: recording.id, ip: req.ip });
   res.status(204).end();
 });

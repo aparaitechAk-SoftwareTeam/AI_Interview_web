@@ -2,7 +2,7 @@ import path from "node:path";
 import { PDFParse } from "pdf-parse";
 import mammoth from "mammoth";
 import WordExtractor from "word-extractor";
-import { storage } from "../storage/local-storage.js";
+import { storage } from "../storage/index.js";
 import { extractVisualResume } from "../ai/visual-resume-service.js";
 import { extractLocalImageText } from "./local-image-ocr.js";
 import { ApiError } from "../../utils/api-error.js";

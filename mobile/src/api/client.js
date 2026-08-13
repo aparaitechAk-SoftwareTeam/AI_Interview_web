@@ -61,13 +61,16 @@ export const api = {
   submitAnswer: (id, answer, idempotencyKey) => interviewRequest(`/api/interviews/${id}/answers`, { method: "POST", body: answer, headers: { "Idempotency-Key": idempotencyKey } }),
   event: (id, event) => interviewRequest(`/api/interviews/${id}/events`, { method: "POST", body: event }),
   completeInterview: (id) => interviewRequest(`/api/interviews/${id}/complete`, { method: "POST" }),
-  uploadRecordingChunk: async (id, blob, index, suffix = "mp4") => {
+  uploadRecordingChunk: async (id, blob, index, { suffix = "mp4", totalChunks, totalBytes } = {}) => {
     const data = new FormData();
     if (typeof Blob !== "undefined" && blob instanceof Blob) data.append("chunk", blob, `chunk-${index}.${suffix}`);
     else data.append("chunk", new File(blob.uri), `chunk-${index}.${suffix}`);
     data.append("index", String(index));
+    data.append("totalChunks", String(totalChunks));
+    data.append("totalBytes", String(totalBytes));
     return interviewRequest(`/api/interviews/${id}/recording/chunks`, { method: "POST", body: data });
   },
+  recordingStatus: (id) => interviewRequest(`/api/interviews/${id}/recording/status`),
   finalizeRecording: (id, durationSeconds) => interviewRequest(`/api/interviews/${id}/recording/finalize`, { method: "POST", body: { durationSeconds } }),
   adminLogin: (username, password) => request("/api/admin/login", { method: "POST", body: { username, password } }),
   adminDashboard: (token) => request("/api/admin/dashboard", { token }),

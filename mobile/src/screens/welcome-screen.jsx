@@ -8,6 +8,7 @@ import { router } from "expo-router";
 import { api } from "../api/client";
 
 const heroImage = require("../../assets/images/interview-hero-v2.png");
+const brandLogo = require("../../assets/images/aparaitech-interview-logo.png");
 
 const palette = {
   background: "#020817",
@@ -23,9 +24,7 @@ const palette = {
 };
 
 function BrandMark() {
-  return <LinearGradient colors={["#20B8FF", "#3458F4", "#A832F3"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.brandMark}>
-    <View style={styles.brandMarkInner}><Text style={styles.brandMarkText}>A</Text></View>
-  </LinearGradient>;
+  return <Image source={brandLogo} contentFit="contain" style={styles.brandMark} accessibilityLabel="Aparaitech AI Interview logo" />;
 }
 
 function PersonGlyph({ color = "#F5F8FF" }) {
@@ -141,9 +140,7 @@ const styles = StyleSheet.create({
   bottomGlow: { position: "absolute", width: 180, height: 180, borderRadius: 90, backgroundColor: "rgba(134, 38, 251, 0.1)", bottom: 0, left: 0, boxShadow: "0 0 90px rgba(123, 47, 255, 0.22)" },
   topbar: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   brandLockup: { flexDirection: "row", alignItems: "center", gap: 10 },
-  brandMark: { width: 42, height: 42, borderRadius: 15, justifyContent: "center", alignItems: "center", transform: [{ rotate: "-10deg" }], boxShadow: "0 6px 22px rgba(58, 92, 255, 0.48)" },
-  brandMarkInner: { width: 29, height: 29, borderRadius: 10, backgroundColor: "#071337", alignItems: "center", justifyContent: "center" },
-  brandMarkText: { color: "#F6F9FF", fontSize: 18, fontWeight: "900", transform: [{ rotate: "10deg" }] },
+  brandMark: { width: 46, height: 46, borderRadius: 15, boxShadow: "0 6px 22px rgba(58, 92, 255, 0.48)" },
   brandName: { color: palette.heading, fontSize: 22, fontWeight: "800", letterSpacing: 0.7 },
   brandSub: { color: "#3F7CFF", fontSize: 10, fontWeight: "800", letterSpacing: 4.5, marginTop: -1 },
   secureChip: { height: 39, borderRadius: 22, borderWidth: 1, borderColor: "rgba(136, 165, 213, 0.42)", backgroundColor: "rgba(5, 16, 38, 0.65)", paddingHorizontal: 11, flexDirection: "row", alignItems: "center", gap: 7 },

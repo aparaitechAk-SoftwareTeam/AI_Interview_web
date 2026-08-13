@@ -7,7 +7,7 @@ import { aggregateScores } from "../utils/score.js";
 import { calculateIntegrity } from "../utils/integrity.js";
 import { interviewAi } from "../services/ai/interview-ai-service.js";
 import { answer as answerValidator, consent as consentValidator, event as eventValidator } from "../validators/request.js";
-import { storage } from "../services/storage/local-storage.js";
+import { storage } from "../services/storage/index.js";
 import { getInterviewSettings } from "../services/interview-settings.js";
 
 const candidateQuestion = (question) => question && ({ id: question.id, sequence: question.sequence, text: question.questionText, category: question.category, difficulty: question.difficulty, askedAt: question.askedAt });
@@ -90,7 +90,10 @@ export const start = asyncHandler(async (req, res) => {
 export const current = asyncHandler(async (req, res) => {
   const interview = await loadScopedInterview(req);
   if (interview.status === InterviewStatus.TERMINATED) throw new ApiError(409, "INTERVIEW_TERMINATED", "This interview was terminated by the administrator.");
-  if (interview.status === InterviewStatus.COMPLETED) return res.json({ interview: { id: interview.id, status: interview.status, completedAt: interview.completedAt }, completed: true });
+  if (interview.status === InterviewStatus.COMPLETED) {
+    const recording = await InterviewRecording.findOne({ interviewId: interview._id });
+    return res.json({ interview: { id: interview.id, status: interview.status, completedAt: interview.completedAt }, completed: true, recording: recording ? { status: recording.status, expectedChunks: recording.expectedChunks || 0, receivedChunks: recording.chunks?.length || 0, fileSize: recording.fileSize || 0, finalizedAt: recording.finalizedAt || null } : { status: "NOT_STARTED" } });
+  }
   const result = await advance(interview);
   res.json({ interview: { id: interview.id, status: result.interview?.status || interview.status, startedAt: interview.startedAt, durationMinutes: interview.configuration.durationMinutes, maxQuestions: interview.configuration.maxQuestions }, currentQuestion: candidateQuestion(result.currentQuestion), completed: result.completed });
 });
@@ -122,8 +125,10 @@ export const submitAnswer = asyncHandler(async (req, res) => {
 });
 
 export const logEvent = asyncHandler(async (req, res) => {
-  const interview = await loadScopedInterview(req); if (isTerminal(interview.status)) throw new ApiError(409, "INTERVIEW_NOT_ACTIVE", "This interview is no longer active.");
+  const interview = await loadScopedInterview(req);
   const payload = eventValidator.parse(req.body);
+  const lateEvidenceTypes = new Set(["RECORDING_INTERRUPTION", "NETWORK_INTERRUPTION", "SESSION_RECOVERED"]);
+  if (isTerminal(interview.status) && !(interview.status === InterviewStatus.COMPLETED && lateEvidenceTypes.has(payload.type))) throw new ApiError(409, "INTERVIEW_NOT_ACTIVE", "This interview is no longer active.");
   const event = await InterviewEvent.create({ interviewId: interview._id, candidateId: req.candidate._id, ...payload });
   res.status(201).json({ event: { id: event.id, type: event.type, timestamp: event.timestamp } });
 });
@@ -133,15 +138,44 @@ export const forceComplete = asyncHandler(async (req, res) => {
   res.json({ interview: { id: final.id, status: final.status, completedAt: final.completedAt } });
 });
 
+function chunkKey(recordingId, index) { return `recording-chunks/${recordingId}/${String(index).padStart(6, "0")}.part`; }
+async function availableChunkIndexes(recording) {
+  const entries = recording.chunks.map((chunk) => ({ index: chunk.index, key: chunkKey(recording.id, chunk.index) }));
+  const existing = await storage.existingKeys(entries.map((entry) => entry.key));
+  return entries.filter((entry) => existing.has(entry.key)).map((entry) => entry.index).sort((a, b) => a - b);
+}
+
+export const recordingStatus = asyncHandler(async (req, res) => {
+  const interview = await loadScopedInterview(req);
+  const recording = await InterviewRecording.findOne({ interviewId: interview._id });
+  if (!recording) return res.json({ recording: { status: "NOT_STARTED", receivedIndexes: [], missingIndexes: [] } });
+  if (recording.status === "READY") return res.json({ recording: { id: recording.id, status: recording.status, fileSize: recording.fileSize, durationSeconds: recording.durationSeconds, receivedIndexes: [], missingIndexes: [] } });
+  const receivedIndexes = await availableChunkIndexes(recording);
+  const received = new Set(receivedIndexes);
+  const expectedChunks = recording.expectedChunks || 0;
+  const missingIndexes = expectedChunks ? Array.from({ length: expectedChunks }, (_, index) => index).filter((index) => !received.has(index)) : [];
+  res.json({ recording: { id: recording.id, status: recording.status, expectedChunks, expectedBytes: recording.expectedBytes, receivedIndexes, missingIndexes, lastError: recording.lastError || null } });
+});
+
 export const uploadRecordingChunk = asyncHandler(async (req, res) => {
   const interview = await loadScopedInterview(req); if (!req.file?.buffer) throw new ApiError(400, "CHUNK_REQUIRED", "A recording chunk is required.");
   if (![InterviewStatus.IN_PROGRESS, InterviewStatus.PROCESSING, InterviewStatus.COMPLETED].includes(interview.status)) throw new ApiError(409, "INTERVIEW_NOT_ACTIVE", "This interview is not accepting recording uploads.");
   const index = Number(req.body.index); if (!Number.isInteger(index) || index < 0 || index > 10000) throw new ApiError(400, "INVALID_CHUNK_INDEX", "Recording chunk index is invalid.");
+  const expectedChunks = Number(req.body.totalChunks); if (!Number.isInteger(expectedChunks) || expectedChunks < 1 || expectedChunks > 10001 || index >= expectedChunks) throw new ApiError(400, "INVALID_CHUNK_COUNT", "Recording chunk count is invalid.");
+  const expectedBytes = Number(req.body.totalBytes); if (!Number.isSafeInteger(expectedBytes) || expectedBytes < req.file.size || expectedBytes > 1024 * 1024 * 1024) throw new ApiError(400, "INVALID_RECORDING_SIZE", "Recording size is invalid.");
   let recording = await InterviewRecording.findOne({ interviewId: interview._id });
-  if (!recording) recording = await InterviewRecording.create({ interviewId: interview._id, candidateId: req.candidate._id, status: "UPLOADING", mimeType: req.file.mimetype || "video/mp4", retentionUntil: new Date(Date.now() + interview.configuration.recordingRetentionDays * 24 * 3600000) });
-  if (recording.chunks.some((chunk) => chunk.index === index)) return res.json({ recordingId: recording.id, index, duplicate: true });
-  const checksum = crypto.createHash("sha256").update(req.file.buffer).digest("hex"); const key = `recording-chunks/${recording.id}/${String(index).padStart(6, "0")}.part`;
-  await storage.putBuffer(key, req.file.buffer); recording.chunks.push({ index, size: req.file.size, sha256: checksum, receivedAt: new Date() }); recording.status = "UPLOADING"; await recording.save();
+  const mimeType = ["video/mp4", "video/webm", "video/quicktime"].includes(req.file.mimetype) ? req.file.mimetype : "video/mp4";
+  if (!recording) recording = await InterviewRecording.create({ interviewId: interview._id, candidateId: req.candidate._id, status: "UPLOADING", mimeType, expectedChunks, expectedBytes, retentionUntil: new Date(Date.now() + interview.configuration.recordingRetentionDays * 24 * 3600000) });
+  if (recording.status === "DELETED") throw new ApiError(410, "RECORDING_DELETED", "This recording was removed under the administrator retention policy and cannot be uploaded again.");
+  if (recording.status === "READY") return res.json({ recordingId: recording.id, index, duplicate: true, ready: true });
+  if ((recording.expectedChunks && recording.expectedChunks !== expectedChunks) || (recording.expectedBytes && recording.expectedBytes !== expectedBytes)) throw new ApiError(409, "RECORDING_METADATA_CONFLICT", "The recording upload metadata changed. Retry with the original recording file.");
+  recording.expectedChunks = expectedChunks; recording.expectedBytes = expectedBytes; recording.mimeType ||= mimeType;
+  const existing = recording.chunks.find((chunk) => chunk.index === index); const key = chunkKey(recording.id, index);
+  if (existing && await storage.exists(key)) return res.json({ recordingId: recording.id, index, duplicate: true });
+  const checksum = crypto.createHash("sha256").update(req.file.buffer).digest("hex");
+  await storage.putBuffer(key, req.file.buffer, { contentType: recording.mimeType, interviewId: String(interview.id), index });
+  if (existing) existing.set({ size: req.file.size, sha256: checksum, receivedAt: new Date() }); else recording.chunks.push({ index, size: req.file.size, sha256: checksum, receivedAt: new Date() });
+  recording.status = "UPLOADING"; recording.lastError = undefined; await recording.save();
   res.status(201).json({ recordingId: recording.id, index });
 });
 
@@ -149,10 +183,16 @@ export const finalizeRecording = asyncHandler(async (req, res) => {
   const interview = await loadScopedInterview(req); const recording = await InterviewRecording.findOne({ interviewId: interview._id }).select("+storageKey");
   if (!recording) throw new ApiError(404, "RECORDING_NOT_FOUND", "No recording upload is in progress.");
   if (recording.status === "READY" && recording.storageKey) return res.json({ recording: { id: recording.id, status: recording.status, fileSize: recording.fileSize, duplicate: true } });
-  const ordered = [...recording.chunks].sort((a, b) => a.index - b.index); if (!ordered.length || ordered.some((chunk, index) => chunk.index !== index)) throw new ApiError(409, "RECORDING_CHUNKS_MISSING", "Some recording chunks are missing. The app can retry only the missing chunks.");
-  const keys = ordered.map((chunk) => `recording-chunks/${recording.id}/${String(chunk.index).padStart(6, "0")}.part`); const outputKey = `recordings/${interview.id}/${recording.id}.${recordingFileExtension(recording.mimeType)}`;
-  await storage.concatenate(keys, outputKey);
-  recording.storageKey = outputKey; recording.fileSize = ordered.reduce((total, chunk) => total + chunk.size, 0); recording.durationSeconds = Number(req.body.durationSeconds) || 0; recording.status = "READY"; await recording.save(); interview.recordingId = recording._id; await interview.save();
+  const ordered = [...recording.chunks].sort((a, b) => a.index - b.index); const expectedChunks = recording.expectedChunks || ordered.length;
+  const available = new Set(await availableChunkIndexes(recording));
+  const missing = Array.from({ length: expectedChunks }, (_, index) => index).filter((index) => !available.has(index));
+  if (!ordered.length || missing.length) { recording.lastError = `Missing recording chunks: ${missing.slice(0, 20).join(", ")}`; await recording.save(); throw new ApiError(409, "RECORDING_CHUNKS_MISSING", "Some recording chunks are missing. The app will retry only those chunks.", { missingIndexes: missing }); }
+  const assembledBytes = ordered.reduce((total, chunk) => total + chunk.size, 0);
+  if (recording.expectedBytes && assembledBytes !== recording.expectedBytes) { recording.lastError = `Recording size mismatch: received ${assembledBytes} of ${recording.expectedBytes} bytes`; await recording.save(); throw new ApiError(409, "RECORDING_SIZE_MISMATCH", "The recording upload is incomplete. Retry the protected upload from the same device."); }
+  const keys = ordered.map((chunk) => chunkKey(recording.id, chunk.index)); const outputKey = `recordings/${interview.id}/${recording.id}.${recordingFileExtension(recording.mimeType)}`;
+  try { await storage.concatenate(keys, outputKey, { contentType: recording.mimeType, interviewId: String(interview.id) }); }
+  catch (error) { recording.lastError = String(error?.message || "Recording assembly failed").slice(0, 500); await recording.save(); throw new ApiError(503, "RECORDING_FINALIZE_FAILED", "The protected recording could not be finalized yet. Retry is safe."); }
+  recording.storageKey = outputKey; recording.fileSize = assembledBytes; recording.durationSeconds = Number(req.body.durationSeconds) || 0; recording.status = "READY"; recording.finalizedAt = new Date(); recording.lastError = undefined; await recording.save(); interview.recordingId = recording._id; await interview.save();
   await Promise.all(keys.map((key) => storage.delete(key).catch(() => {})));
   res.json({ recording: { id: recording.id, status: recording.status, fileSize: recording.fileSize } });
 });

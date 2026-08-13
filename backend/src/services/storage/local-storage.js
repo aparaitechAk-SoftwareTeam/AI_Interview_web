@@ -21,6 +21,13 @@ export class LocalStorageProvider {
   }
   async getPath(key) { return path.join(env.UPLOAD_DIR, safeKey(key)); }
   async readBuffer(key) { return fs.readFile(await this.getPath(key)); }
+  async exists(key) { return fsSync.existsSync(await this.getPath(key)); }
+  async existingKeys(keys) {
+    const checks = await Promise.all(keys.map(async (key) => ({ key, exists: await this.exists(key) })));
+    return new Set(checks.filter((entry) => entry.exists).map((entry) => entry.key));
+  }
+  async stat(key) { return fs.stat(await this.getPath(key)); }
+  async createReadStream(key, options) { return fsSync.createReadStream(await this.getPath(key), options); }
   async delete(key) { await fs.rm(await this.getPath(key), { force: true }); }
   async concatenate(keys, destination) {
     const safe = safeKey(destination); const target = path.join(env.UPLOAD_DIR, safe);
@@ -47,5 +54,3 @@ export class LocalStorageProvider {
     }
   }
 }
-
-export const storage = new LocalStorageProvider();

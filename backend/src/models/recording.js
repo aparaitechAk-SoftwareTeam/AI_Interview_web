@@ -9,6 +9,10 @@ const recordingSchema = new mongoose.Schema({
   durationSeconds: { type: Number, default: 0 },
   status: { type: String, enum: ["NOT_STARTED", "UPLOADING", "READY", "FAILED", "DELETED"], default: "NOT_STARTED" },
   chunks: [{ index: Number, size: Number, sha256: String, receivedAt: Date }],
+  expectedChunks: { type: Number, min: 1, max: 10001 },
+  expectedBytes: { type: Number, min: 1 },
+  lastError: { type: String, maxlength: 500 },
+  finalizedAt: Date,
   retentionUntil: Date,
   deletedAt: Date,
   deleteReason: { type: String, maxlength: 300 }

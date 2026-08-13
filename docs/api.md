@@ -27,7 +27,8 @@ All timestamps are ISO-8601 UTC in MongoDB. Error responses use `{ "error": { "c
 | POST | `/api/interviews/:interviewId/answers` | Submit current answer. Requires `Idempotency-Key`. |
 | POST | `/api/interviews/:interviewId/events` | Store an authorized client integrity event. |
 | POST | `/api/interviews/:interviewId/complete` | Complete using stored answers. |
-| POST | `/api/interviews/:interviewId/recording/chunks` | Multipart field `chunk` and integer `index`. |
+| POST | `/api/interviews/:interviewId/recording/chunks` | Multipart fields `chunk`, integer `index`, `totalChunks` and `totalBytes`. Safe to retry. |
+| GET | `/api/interviews/:interviewId/recording/status` | Return received/missing chunk indexes for resumable upload. |
 | POST | `/api/interviews/:interviewId/recording/finalize` | Join sequential chunks privately. |
 
 `POST /api/interviews/start`

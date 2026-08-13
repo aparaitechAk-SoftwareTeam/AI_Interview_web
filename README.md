@@ -175,17 +175,17 @@ If Gemini is unavailable or returns invalid JSON, the API returns a safe error a
 
 `STORAGE_PROVIDER=local` is included for development. It stores private files under `backend/uploads/`, which is git-ignored and never served as a public static directory. Resume download is candidate-scoped; recording streaming/deletion is administrator-scoped.
 
-For production, replace the `LocalStorageProvider` behind `backend/src/services/storage/local-storage.js` with a private-bucket provider. Maintain the same `putBuffer`, `readBuffer`, `concatenate` and `delete` contract; use short-lived signed reads or the authenticated API proxy, never public object URLs.
+Production defaults to `STORAGE_PROVIDER=gridfs`. The GridFS provider stores resume files, resumable recording chunks and finalized recordings in the configured MongoDB database, so a Render restart or redeploy does not erase candidate evidence. Admin playback remains behind the authenticated range-streaming API; no public recording URL is created.
 
 ### Recording retention on Render
 
-The free Render filesystem is temporary. It can serve a recording only until the service restarts or redeploys, so it cannot guarantee that a recruiter can play a completed recording later. For protected recording retention, use a paid Render service with a persistent disk mounted at `/var/data/uploads`, then set this Render environment variable:
+The free Render filesystem is temporary, so production must not use `STORAGE_PROVIDER=local`. `render.yaml` selects GridFS, and the API also defaults to GridFS whenever `NODE_ENV=production`. Existing manually configured Render services should set:
 
 ```dotenv
-UPLOAD_DIR=/var/data/uploads
+STORAGE_PROVIDER=gridfs
 ```
 
-Persistent disks are attached in the Render service's **Disks** tab and keep only files below their mount path. A private object store is the better choice if you later run more than one API instance. The mobile app now retries recording chunks, persists the finished file locally while it uploads, and shows the upload state in the admin candidate profile.
+The mobile app uploads 2 MB chunks, asks the server which chunks already exist, retries only missing chunks, preserves the completed native file until finalization, and shows upload percentage. The admin profile shows received/expected chunks, finalization time, storage errors and authenticated video/audio playback. For hundreds of retained interviews, provision enough MongoDB storage or migrate the same storage interface to a private object store with a lifecycle policy before the database quota is reached.
 
 ## Seed and development credentials
 
@@ -217,7 +217,7 @@ The acceptance scenarios are in [docs/test-matrix.md](docs/test-matrix.md), and 
 - [ ] Use production secrets manager and a unique `JWT_SECRET` of 64+ random characters.
 - [ ] Enable Atlas IP restrictions, backups, encryption and least-privilege DB accounts.
 - [ ] Configure HTTPS API URL, restrictive `CORS_ORIGINS`, monitoring and alerting.
-- [ ] Replace local storage with private object storage and lifecycle retention policy.
+- [ ] Confirm `STORAGE_PROVIDER=gridfs` and provision enough MongoDB storage for the configured recording retention period.
 - [ ] Set the legal consent version and retention period; validate consent copy with counsel.
 - [ ] Test every matrix scenario on Android Development Build and document device/OS results.
 - [ ] Review Gemini model/data-retention terms, token budget, rate limits and costs.
