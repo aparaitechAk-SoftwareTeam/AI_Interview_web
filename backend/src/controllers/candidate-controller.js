@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { Candidate, Resume } from "../models/index.js";
+import { AdminDecision, Candidate, InterviewAnswer, InterviewQuestion, InterviewRecording, Resume } from "../models/index.js";
 import { CandidateStatus } from "@aparaitech/shared";
 import { asyncHandler } from "../utils/async-handler.js";
 import { ApiError } from "../utils/api-error.js";
@@ -11,6 +11,44 @@ import { assertCandidateId } from "../middleware/candidate-scope.js";
 const publicStatus = (candidate) => ({ id: candidate.id, fullName: candidate.fullName, position: candidate.position, status: candidate.status, updatedAt: candidate.updatedAt });
 
 export const status = asyncHandler(async (req, res) => res.json({ candidate: publicStatus(req.candidate) }));
+
+export const profile = asyncHandler(async (req, res) => {
+  const candidate = await Candidate.findById(req.candidate._id)
+    .populate("invitationId", "code expiresAt active emailDelivery")
+    .populate("resumeId", "originalName parseStatus structuredData processedAt")
+    .populate("currentInterviewId");
+  if (!candidate) throw new ApiError(404, "CANDIDATE_NOT_FOUND", "Candidate profile was not found.");
+  const interview = candidate.currentInterviewId;
+  const [questions, answers, recording, decision] = interview ? await Promise.all([
+    InterviewQuestion.find({ interviewId: interview._id }).sort({ sequence: 1 }).lean(),
+    InterviewAnswer.find({ interviewId: interview._id }).select("questionId transcript transcriptConfidence source evaluation submittedAt").lean(),
+    InterviewRecording.findOne({ interviewId: interview._id, candidateId: candidate._id }).lean(),
+    AdminDecision.findOne({ interviewId: interview._id, candidateId: candidate._id }).select("decision candidateFeedback decisionAt").lean()
+  ]) : [[], [], null, null];
+  const answersByQuestion = new Map(answers.map((answer) => [String(answer.questionId), answer]));
+  res.json({
+    candidate: { id: candidate.id, fullName: candidate.fullName, email: candidate.email, phone: candidate.phone, college: candidate.college, qualification: candidate.qualification, position: candidate.position, status: candidate.status, createdAt: candidate.createdAt, updatedAt: candidate.updatedAt },
+    invitation: candidate.invitationId ? { code: candidate.invitationId.code, expiresAt: candidate.invitationId.expiresAt, active: candidate.invitationId.active } : null,
+    resume: candidate.resumeId ? { id: candidate.resumeId.id, originalName: candidate.resumeId.originalName, parseStatus: candidate.resumeId.parseStatus, structuredData: candidate.resumeId.structuredData, processedAt: candidate.resumeId.processedAt } : null,
+    interview: interview ? { id: interview.id, status: interview.status, startedAt: interview.startedAt, completedAt: interview.completedAt, durationSeconds: interview.durationSeconds, scores: interview.scores, finalAssessment: interview.finalAssessment, aiRecommendation: interview.aiRecommendation, integrity: interview.integrity } : null,
+    questionAnswers: questions.map((question) => ({ question: { id: String(question._id), sequence: question.sequence, category: question.category, difficulty: question.difficulty, text: question.questionText }, answer: answersByQuestion.get(String(question._id)) || null })),
+    recording: recording ? { status: recording.status, mimeType: recording.mimeType, fileSize: recording.fileSize, durationSeconds: recording.durationSeconds, finalizedAt: recording.finalizedAt, retentionUntil: recording.retentionUntil } : null,
+    decision: decision ? { decision: decision.decision, candidateFeedback: decision.candidateFeedback || "", decisionAt: decision.decisionAt } : null
+  });
+});
+
+export const streamOwnRecording = asyncHandler(async (req, res) => {
+  const recording = await InterviewRecording.findOne({ interviewId: req.params.interviewId, candidateId: req.candidate._id }).select("+storageKey");
+  if (!recording || recording.status !== "READY" || !recording.storageKey || !(await storage.exists(recording.storageKey))) throw new ApiError(404, "RECORDING_NOT_FOUND", "Your interview recording is not available yet.");
+  const { size } = await storage.stat(recording.storageKey); const range = req.headers.range;
+  res.setHeader("Content-Type", recording.mimeType || "video/mp4"); res.setHeader("Accept-Ranges", "bytes"); res.setHeader("Cache-Control", "private, no-store");
+  if (!range) { res.setHeader("Content-Length", size); (await storage.createReadStream(recording.storageKey)).pipe(res); return; }
+  const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+  if (!match) { res.status(416).setHeader("Content-Range", `bytes */${size}`).end(); return; }
+  const start = match[1] ? Number(match[1]) : 0; const end = match[2] ? Math.min(Number(match[2]), size - 1) : size - 1;
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || start > end || start >= size) { res.status(416).setHeader("Content-Range", `bytes */${size}`).end(); return; }
+  res.status(206); res.setHeader("Content-Range", `bytes ${start}-${end}/${size}`); res.setHeader("Content-Length", end - start + 1); (await storage.createReadStream(recording.storageKey, { start, end })).pipe(res);
+});
 
 export const uploadResume = asyncHandler(async (req, res) => {
   assertCandidateId(req, req.params.candidateId);

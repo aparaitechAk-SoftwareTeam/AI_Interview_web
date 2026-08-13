@@ -97,6 +97,12 @@ describe("security and resilience primitives", () => {
     const response = await request(app).get("/api/admin/dashboard");
     expect(response.status).toBe(401); expect(response.body.error.code).toBe("AUTH_REQUIRED");
   });
+  it("does not expose a candidate report or recording without a candidate JWT", async () => {
+    const profileResponse = await request(app).get("/api/candidates/me/profile");
+    const recordingResponse = await request(app).get("/api/candidates/me/interviews/507f1f77bcf86cd799439011/recording");
+    expect(profileResponse.status).toBe(401); expect(profileResponse.body.error.code).toBe("AUTH_REQUIRED");
+    expect(recordingResponse.status).toBe(401); expect(recordingResponse.body.error.code).toBe("AUTH_REQUIRED");
+  });
   it("reports health without exposing environment secrets", async () => {
     const response = await request(app).get("/health");
     expect(response.status).toBe(200); expect(JSON.stringify(response.body)).not.toContain("JWT_SECRET"); expect(JSON.stringify(response.body)).not.toContain("MONGODB");
