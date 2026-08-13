@@ -36,7 +36,7 @@ const recordingLabels = {
   ACTIVE: { text: "VIDEO + AUDIO RECORDING", tone: "success" },
   UPLOADING: { text: "SECURE UPLOAD", tone: "warning" },
   READY: { text: "RECORDING SAVED", tone: "success" },
-  ERROR: { text: "RECORDING NEEDS ATTENTION", tone: "danger" }
+  ERROR: { text: "RECORDING SAFE · RETRY UPLOAD", tone: "warning" }
 };
 
 export default function InterviewScreen() {
@@ -440,7 +440,7 @@ export default function InterviewScreen() {
   const recordingStatus = recordingLabels[recordingState] || recordingLabels.WAITING_CAMERA;
   const answerDisabled = recordingState !== "ACTIVE" || machine.phase === InterviewState.ANALYZING;
 
-  if (recordingRetryPending) return <Screen><View style={{ flexGrow: 1, justifyContent: "center", gap: 16 }}><InterviewRobot state={InterviewState.FINISHING} /><Card><Text selectable style={{ color: colors.text, fontSize: 22, fontWeight: "900" }}>Finish protected recording upload</Text><Text selectable style={{ color: colors.muted, lineHeight: 22 }}>Your answers are complete. Keep this app open until the administrator recording is confirmed at 100%.</Text><StatusPill tone={recordingStatus.tone}>{recordingStatus.text}</StatusPill>{uploadProgress > 0 ? <Text selectable style={{ color: colors.cyan, fontSize: 20, fontWeight: "900" }}>{uploadProgress}% uploaded</Text> : null}</Card><Notice message={uploadNote} tone="warning" /><Button title={online ? "Resume protected recording upload" : "Waiting for internet connection"} loading={recordingState === "UPLOADING"} disabled={!online || recordingState === "UPLOADING"} onPress={retryRecordingUpload} /></View></Screen>;
+  if (recordingRetryPending) return <Screen><View style={{ flexGrow: 1, justifyContent: "center", gap: 16 }}><InterviewRobot state={InterviewState.FINISHING} /><Card><Text selectable style={{ color: colors.text, fontSize: 22, fontWeight: "900" }}>Finishing secure video + audio</Text><Text selectable style={{ color: colors.muted, lineHeight: 22 }}>Your answers are complete. Keep this app open until the administrator recording is confirmed at 100%.</Text><StatusPill tone={recordingStatus.tone}>{recordingStatus.text}</StatusPill>{uploadProgress > 0 ? <Text selectable style={{ color: colors.cyan, fontSize: 20, fontWeight: "900" }}>{uploadProgress}% uploaded</Text> : null}</Card><Notice message={uploadNote} tone="warning" /><Button title={online ? "Continue secure recording upload" : "Waiting for internet connection"} loading={recordingState === "UPLOADING"} disabled={!online || recordingState === "UPLOADING"} onPress={retryRecordingUpload} /></View></Screen>;
 
   return <Screen style={{ paddingBottom: 64 }}><View style={{ gap: 14 }}>
     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 }}><View style={{ flex: 1 }}><Text selectable style={{ color: colors.text, fontWeight: "900", fontSize: 18 }}>{candidateName}</Text><Text selectable style={{ color: colors.muted, fontVariant: ["tabular-nums"] }}>{formatElapsed(elapsed)} elapsed</Text></View><View style={{ alignItems: "flex-end", gap: 5 }}><StatusPill tone={online ? "success" : "warning"}>{online ? "CONNECTED" : "RECONNECTING"}</StatusPill><StatusPill tone={recordingStatus.tone}>{recordingStatus.text}</StatusPill></View></View>

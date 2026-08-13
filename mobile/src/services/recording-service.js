@@ -10,23 +10,33 @@ async function uploadMissingChunks({ interviewId, source, chunkSize, received, o
   const totalChunks = Math.ceil(source.size / chunkSize);
   let uploaded = received.size;
   onProgress?.({ uploaded, total: totalChunks, percent: Math.round((uploaded / totalChunks) * 100) });
-  for (let index = 0, offset = 0; index < totalChunks; index += 1, offset += chunkSize) {
-    if (received.has(index)) continue;
-    const chunkFile = new File(Paths.cache, `aparaitech-${interviewId}-${index}.mp4`);
-    const bytes = new Uint8Array(await source.slice(offset, Math.min(offset + chunkSize, source.size)).arrayBuffer());
-    chunkFile.create({ overwrite: true }); chunkFile.write(bytes);
-    try {
-      let lastError;
-      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
-        try {
-          await api.uploadRecordingChunk(interviewId, { uri: chunkFile.uri }, index, { totalChunks, totalBytes: source.size });
-          lastError = null; break;
-        } catch (error) { lastError = error; await wait(Math.min(8000, 750 * 2 ** attempt)); }
-      }
-      if (lastError) throw lastError;
-      received.add(index); uploaded += 1;
-      onProgress?.({ uploaded, total: totalChunks, percent: Math.round((uploaded / totalChunks) * 100) });
-    } finally { if (chunkFile.exists) chunkFile.delete(); }
+  const handle = source.open();
+  try {
+    for (let index = 0, offset = 0; index < totalChunks; index += 1, offset += chunkSize) {
+      if (received.has(index)) continue;
+      const chunkFile = new File(Paths.cache, `aparaitech-${interviewId}-${index}.mp4`);
+      // Do not use File.slice()/Blob here. Several Android/Hermes builds reject
+      // Blobs created from ArrayBufferView before the request reaches the API.
+      // FileHandle reads and File.upload stay entirely on Expo's native path.
+      handle.offset = offset;
+      const bytes = handle.readBytes(Math.min(chunkSize, source.size - offset));
+      chunkFile.create({ overwrite: true });
+      chunkFile.write(bytes);
+      try {
+        let lastError;
+        for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+          try {
+            await api.uploadRecordingChunk(interviewId, chunkFile, index, { totalChunks, totalBytes: source.size });
+            lastError = null; break;
+          } catch (error) { lastError = error; await wait(Math.min(8000, 750 * 2 ** attempt)); }
+        }
+        if (lastError) throw lastError;
+        received.add(index); uploaded += 1;
+        onProgress?.({ uploaded, total: totalChunks, percent: Math.round((uploaded / totalChunks) * 100) });
+      } finally { if (chunkFile.exists) chunkFile.delete(); }
+    }
+  } finally {
+    handle.close();
   }
 }
 

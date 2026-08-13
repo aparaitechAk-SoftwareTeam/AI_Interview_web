@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import { z } from "zod";
 import { CandidateStatus, InterviewStatus } from "@aparaitech/shared";
 import { Admin, AdminDecision, Candidate, Interview, InterviewAnswer, InterviewEvent, InterviewQuestion, InterviewRecording, Invitation, Resume } from "../models/index.js";
 import { asyncHandler } from "../utils/async-handler.js";
@@ -9,6 +10,7 @@ import { calculateIntegrity } from "../utils/integrity.js";
 import { storage } from "../services/storage/index.js";
 import { invitationEmail } from "../services/notifications/invitation-email.js";
 import { createCandidate, decision, resetInvitation, terminate } from "../validators/request.js";
+import { candidateImportRow, scanCandidateFile } from "../services/bulk-candidates/candidate-file-scanner.js";
 
 const recordingChunkKey = (recordingId, index) => `recording-chunks/${recordingId}/${String(index).padStart(6, "0")}.part`;
 
@@ -45,6 +47,53 @@ async function deliverInvitation(candidate, invitation) {
   await invitation.save();
   return invitationView(invitation);
 }
+
+const bulkImportPayload = z.object({
+  rows: z.array(candidateImportRow).min(1).max(500),
+  validityHours: z.coerce.number().int().min(1).max(24 * 90).default(168),
+  singleUse: z.boolean().default(false)
+}).strict();
+
+export const scanCandidateImport = asyncHandler(async (req, res) => {
+  if (!req.file) throw new ApiError(400, "BULK_FILE_REQUIRED", "Choose a candidate file or image first.");
+  const preview = await scanCandidateFile(req.file, { position: req.body?.position });
+  await writeAudit({ adminId: req.auth.sub, action: "CANDIDATE_BULK_SCANNED", resourceType: "CandidateImport", metadata: { fileName: preview.fileName, total: preview.total, valid: preview.valid }, ip: req.ip });
+  res.json({ preview });
+});
+
+export const importCandidates = asyncHandler(async (req, res) => {
+  const payload = bulkImportPayload.parse(req.body);
+  const results = new Array(payload.rows.length); const queued = []; const seenEmails = new Set(); const seenPhones = new Set();
+  payload.rows.forEach((row, index) => {
+    const email = row.email.trim().toLowerCase(); const phoneKey = row.phone.replace(/\D/g, "");
+    if (seenEmails.has(email) || seenPhones.has(phoneKey)) results[index] = { serial: row.serial, input: { fullName: row.fullName, email, phone: row.phone }, status: "SKIPPED_DUPLICATE", error: "Duplicate email or phone in this import" };
+    else { seenEmails.add(email); seenPhones.add(phoneKey); queued.push({ row, index }); }
+  });
+  let cursor = 0;
+  async function processNext() {
+    while (cursor < queued.length) {
+      const { row, index } = queued[cursor]; cursor += 1;
+      const email = row.email.trim().toLowerCase(); const phone = row.phone.trim();
+      const existing = await Candidate.findOne({ $or: [{ email }, { phone }] }).select("fullName email phone").lean();
+      if (existing) { results[index] = { serial: row.serial, input: { fullName: row.fullName, email, phone }, status: "SKIPPED_DUPLICATE", error: `Candidate already exists: ${existing.email}` }; continue; }
+      let candidate;
+      try {
+        candidate = await Candidate.create({ ...row, email, phone, status: CandidateStatus.INVITED });
+        const invitation = await newInvitation(candidate._id, req.auth.sub, payload.validityHours, payload.singleUse);
+        candidate.invitationId = invitation._id; await candidate.save();
+        const deliveredInvitation = await deliverInvitation(candidate, invitation);
+        results[index] = { serial: row.serial, status: "CREATED", candidate: candidateView(candidate), invitation: deliveredInvitation };
+      } catch (error) {
+        if (candidate && !candidate.invitationId) await Candidate.deleteOne({ _id: candidate._id }).catch(() => {});
+        results[index] = { serial: row.serial, input: { fullName: row.fullName, email, phone }, status: "FAILED", error: String(error?.message || "Candidate import failed").slice(0, 300) };
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(5, queued.length) }, () => processNext()));
+  const created = results.filter((item) => item.status === "CREATED").length;
+  await writeAudit({ adminId: req.auth.sub, action: "CANDIDATE_BULK_IMPORTED", resourceType: "CandidateImport", metadata: { requested: payload.rows.length, created, skipped: results.length - created }, ip: req.ip });
+  res.status(created ? 201 : 200).json({ summary: { requested: payload.rows.length, created, skipped: results.filter((item) => item.status === "SKIPPED_DUPLICATE").length, failed: results.filter((item) => item.status === "FAILED").length }, results });
+});
 
 export const create = asyncHandler(async (req, res) => {
   const payload = createCandidate.parse(req.body);

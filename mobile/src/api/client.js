@@ -1,5 +1,5 @@
 import Constants from "expo-constants";
-import { File } from "expo-file-system";
+import { File, UploadType } from "expo-file-system";
 import { secureStorage } from "../services/secure-storage";
 
 const INTERVIEW_TOKEN = "aparaitech.interview-token";
@@ -19,10 +19,10 @@ export async function clearTokens() { await Promise.all([secureStorage.remove(IN
 export const getInterviewToken = () => secureStorage.get(INTERVIEW_TOKEN);
 export const getStatusToken = () => secureStorage.get(STATUS_TOKEN);
 
-async function request(path, { method = "GET", body, token = null, headers = {}, signal } = {}) {
+async function request(path, { method = "GET", body, token = null, headers = {}, signal, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
   // Render's free tier can take more than 50 seconds to wake after inactivity.
   // Keep the request alive long enough for the first API call from a device.
-  const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const combinedSignal = signal || controller.signal;
   try {
     const response = await fetch(`${apiBaseUrl()}${path}`, { method, headers: { Accept: "application/json", ...(body instanceof FormData ? {} : body ? { "Content-Type": "application/json" } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...headers }, body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined, signal: combinedSignal });
@@ -38,6 +38,23 @@ async function request(path, { method = "GET", body, token = null, headers = {},
 
 const interviewRequest = async (path, options = {}) => request(path, { ...options, token: await getInterviewToken() });
 const statusRequest = async (path, options = {}) => request(path, { ...options, token: await getStatusToken() });
+
+async function uploadNativeFile(path, file, { token, fieldName, parameters, mimeType }) {
+  const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await file.upload(`${apiBaseUrl()}${path}`, {
+      httpMethod: "POST", uploadType: UploadType.MULTIPART, fieldName, parameters, mimeType,
+      headers: { Accept: "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, signal: controller.signal
+    });
+    const parsed = JSON.parse(response.body || "null");
+    if (response.status < 200 || response.status >= 300) throw new ApiError(parsed?.error?.message || "Upload failed.", response.status, parsed?.error?.code || "UPLOAD_FAILED", parsed?.error?.details);
+    return parsed;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    if (error.name === "AbortError") throw new ApiError("The upload timed out. Your recording is safe on this device; retry when connected.", 0, "TIMEOUT");
+    throw new ApiError(error?.message || "Unable to reach the server. Your recording is safe on this device.", 0, "NETWORK_ERROR");
+  } finally { clearTimeout(timeout); }
+}
 
 export const api = {
   health: () => request("/health"),
@@ -62,6 +79,12 @@ export const api = {
   event: (id, event) => interviewRequest(`/api/interviews/${id}/events`, { method: "POST", body: event }),
   completeInterview: (id) => interviewRequest(`/api/interviews/${id}/complete`, { method: "POST" }),
   uploadRecordingChunk: async (id, blob, index, { suffix = "mp4", totalChunks, totalBytes } = {}) => {
+    if (blob instanceof File && typeof blob.upload === "function") {
+      return uploadNativeFile(`/api/interviews/${id}/recording/chunks`, blob, {
+        token: await getInterviewToken(), fieldName: "chunk", mimeType: "video/mp4",
+        parameters: { index: String(index), totalChunks: String(totalChunks), totalBytes: String(totalBytes) }
+      });
+    }
     const data = new FormData();
     if (typeof Blob !== "undefined" && blob instanceof Blob) data.append("chunk", blob, `chunk-${index}.${suffix}`);
     else data.append("chunk", new File(blob.uri), `chunk-${index}.${suffix}`);
@@ -80,6 +103,15 @@ export const api = {
   adminCandidateRegistry: (token, query = "") => request(`/api/admin/candidates/registry${query ? `?${query}` : ""}`, { token }),
   adminCandidate: (token, id) => request(`/api/admin/candidates/${id}`, { token }),
   createCandidate: (token, payload) => request("/api/admin/candidates", { method: "POST", body: payload, token }),
+  scanCandidateImport: async (token, asset, position = "") => {
+    if (!asset.file) {
+      const file = new File(asset.uri);
+      return uploadNativeFile("/api/admin/candidates/bulk/scan", file, { token, fieldName: "file", mimeType: asset.mimeType || "application/octet-stream", parameters: { position } });
+    }
+    const data = new FormData(); data.append("file", asset.file, asset.name || asset.file.name); data.append("position", position);
+    return request("/api/admin/candidates/bulk/scan", { method: "POST", body: data, token });
+  },
+  importCandidates: (token, payload) => request("/api/admin/candidates/bulk/import", { method: "POST", body: payload, token, timeoutMs: 10 * 60 * 1000 }),
   decide: (token, interviewId, payload) => request(`/api/admin/interviews/${interviewId}/decision`, { method: "POST", body: payload, token }),
   resetInvitation: (token, candidateId, payload) => request(`/api/admin/candidates/${candidateId}/invitation/reset`, { method: "POST", body: payload, token }),
   terminate: (token, interviewId, reason) => request(`/api/admin/interviews/${interviewId}/terminate`, { method: "POST", body: { reason }, token }),

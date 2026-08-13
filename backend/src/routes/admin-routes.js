@@ -1,6 +1,7 @@
 import { Router } from "express";
-import { create, dashboard, decide, deleteRecording, detail, list, registry, reset, streamRecording, terminateInterview } from "../controllers/admin-controller.js";
+import { create, dashboard, decide, deleteRecording, detail, importCandidates, list, registry, reset, scanCandidateImport, streamRecording, terminateInterview } from "../controllers/admin-controller.js";
 import { requireAdmin } from "../middleware/auth.js";
+import { bulkCandidateUpload } from "../middleware/upload.js";
 import { getSettings, updateSettings } from "../controllers/settings-controller.js";
 
 export const adminRoutes = Router();
@@ -11,6 +12,8 @@ adminRoutes.put("/settings", updateSettings);
 adminRoutes.post("/candidates", create);
 adminRoutes.get("/candidates", list);
 adminRoutes.get("/candidates/registry", registry);
+adminRoutes.post("/candidates/bulk/scan", bulkCandidateUpload.single("file"), scanCandidateImport);
+adminRoutes.post("/candidates/bulk/import", importCandidates);
 adminRoutes.get("/candidates/:candidateId", detail);
 adminRoutes.post("/candidates/:candidateId/invitation/reset", reset);
 adminRoutes.post("/interviews/:interviewId/terminate", terminateInterview);
