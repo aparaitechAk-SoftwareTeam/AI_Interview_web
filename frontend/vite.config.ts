@@ -1,10 +1,12 @@
 import { defineConfig } from "vite";
 import vinext from "vinext";
+import tailwindcss from "@tailwindcss/vite";
 import { nitro } from "nitro/vite";
 
-// Vercel / non-Cloudflare deployment:
-// Vinext runs the Next.js-compatible app on Vite and Nitro adapts the
-// server-side routes (including app/api/* route handlers) to Vercel.
+// Vercel-ready Vinext build:
+// - vinext: Next.js-compatible app on Vite
+// - @tailwindcss/vite: resolves `@import "tailwindcss"` correctly in Vite
+// - nitro: adapts server/API routes for Vercel
 export default defineConfig({
-  plugins: [vinext(), nitro()],
+  plugins: [vinext(), tailwindcss(), nitro()],
 });
