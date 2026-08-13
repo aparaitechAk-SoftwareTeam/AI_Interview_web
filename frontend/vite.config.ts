@@ -1,12 +1,14 @@
 import { defineConfig } from "vite";
-import vinext from "vinext";
 import tailwindcss from "@tailwindcss/vite";
+import vinext from "vinext";
 import { nitro } from "nitro/vite";
 
-// Vercel-ready Vinext build:
-// - vinext: Next.js-compatible app on Vite
-// - @tailwindcss/vite: resolves `@import "tailwindcss"` correctly in Vite
-// - nitro: adapts server/API routes for Vercel
+// IMPORTANT: Tailwind must run before vinext/RSC so `@import "tailwindcss"`
+// is consumed by the Tailwind Vite plugin before Vite's CSS import resolver.
 export default defineConfig({
-  plugins: [vinext(), tailwindcss(), nitro()],
+  plugins: [
+    tailwindcss(),
+    vinext(),
+    nitro(),
+  ],
 });

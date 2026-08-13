@@ -1,8 +1,8 @@
 # Vercel deployment
 
-Use these settings in Vercel:
+Use these project settings:
 
-- Root Directory: `frontend` (only when this folder is inside a larger repository)
+- Root Directory: `frontend` (only if this folder lives under a repo root)
 - Framework Preset: Other
 - Build Command: `npm run build`
 - Output Directory: `.output`
@@ -12,4 +12,4 @@ Environment variable:
 
 - `API_BASE_URL=https://ai-interview-web-sy7e.onrender.com`
 
-This project uses Vinext + Vite + Tailwind's Vite plugin + Nitro.
+If Vercel previously cached a failed build, redeploy with build cache disabled/cleared.
