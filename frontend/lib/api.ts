@@ -21,7 +21,47 @@ export const api = {
   currentInterview: (id: string) => request<any>(`/api/interviews/${id}/current`, { token: session.get("interview") }),
   submitAnswer: (id: string, payload: unknown, idempotencyKey: string) => request<any>(`/api/interviews/${id}/answers`, { method: "POST", body: JSON.stringify(payload), headers: { "Idempotency-Key": idempotencyKey }, token: session.get("interview") }),
   event: (id: string, payload: unknown) => request<any>(`/api/interviews/${id}/events`, { method: "POST", body: JSON.stringify(payload), token: session.get("interview") }),
-  uploadChunk: (id: string, chunk: Blob, index: number, totalChunks: number, totalBytes: number) => { const body = new FormData(); body.append("chunk", chunk, `chunk-${index}.webm`); body.append("index", String(index)); body.append("totalChunks", String(totalChunks)); body.append("totalBytes", String(totalBytes)); return request<any>(`/api/interviews/${id}/recording/chunks`, { method: "POST", body, token: session.get("interview") }); },
+  uploadChunk: async (id: string, chunk: Blob, index: number, totalChunks: number, totalBytes: number) => {
+    const body = new FormData();
+    body.append("chunk", chunk, `chunk-${index}.webm`);
+    body.append("index", String(index));
+    body.append("totalChunks", String(totalChunks));
+    body.append("totalBytes", String(totalBytes));
+
+    const path = `/api/interviews/${id}/recording/chunks`;
+
+    if (typeof window !== "undefined" && window.location.hostname === "localhost") {
+      const headers = new Headers({ Accept: "application/json" });
+      const token = session.get("interview");
+      if (token) headers.set("Authorization", `Bearer ${token}`);
+
+      const response = await fetch(`http://localhost:4000${path}`, {
+        method: "POST",
+        body,
+        headers
+      });
+
+      const type = response.headers.get("content-type") || "";
+      const parsed = type.includes("json") ? await response.json().catch(() => null) : null;
+
+      if (!response.ok) {
+        throw new ApiError(
+          parsed?.error?.message || "Recording chunk upload failed.",
+          response.status,
+          parsed?.error?.code,
+          parsed?.error?.details
+        );
+      }
+
+      return parsed;
+    }
+
+    return request<any>(path, {
+      method: "POST",
+      body,
+      token: session.get("interview")
+    });
+  },
   finalizeRecording: (id: string, durationSeconds: number) => request<any>(`/api/interviews/${id}/recording/finalize`, { method: "POST", body: JSON.stringify({ durationSeconds }), token: session.get("interview") }),
   adminLogin: (username: string, password: string) => request<any>("/api/admin/login", { method: "POST", body: JSON.stringify({ username, password }) }),
   adminDashboard: () => request<any>("/api/admin/dashboard", { token: session.get("admin") }),
